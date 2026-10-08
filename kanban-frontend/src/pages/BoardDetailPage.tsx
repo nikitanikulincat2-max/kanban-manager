@@ -1,0 +1,641 @@
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+import type { DropResult } from '@hello-pangea/dnd';
+import { toast } from 'react-toastify';
+import api from '../api/axiosConfig';
+import type { Board, Column, Task, Paginated } from '../types';
+import TaskModal from '../components/TaskModal';
+import { useWorkspaceRole } from '../hooks/useWorkspaceRole';
+
+function BoardDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [board, setBoard] = useState<Board | null>(null);
+  const [columns, setColumns] = useState<Column[]>([]);
+  const [tasks, setTasks] = useState<Record<number, Task[]>>({});
+  const [loading, setLoading] = useState(true);
+  const { isManager } = useWorkspaceRole(board?.workspace || null);
+  const [search, setSearch] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [sortBy, setSortBy] = useState('order');
+  const [allUsers, setAllUsers] = useState<{ id: number; username: string }[]>([]);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedColumnId, setSelectedColumnId] = useState<number | null>(null);
+  const [showColumnModal, setShowColumnModal] = useState(false);
+  const [newColumnName, setNewColumnName] = useState('');
+  const [showEditBoard, setShowEditBoard] = useState(false);
+  const [editBoardName, setEditBoardName] = useState('');
+  const [editBoardDescription, setEditBoardDescription] = useState('');
+  const [deletingBoard, setDeletingBoard] = useState(false);
+  const [deletingColumnId, setDeletingColumnId] = useState<number | null>(null);
+  useEffect(() => {
+    loadBoard();
+  }, [id, search, priorityFilter, assigneeFilter, sortBy]);
+
+  const loadBoard = async () => {
+    try {
+      setLoading(true);
+
+      const boardRes = await api.get<Board>(`boards/${id}/`);
+      setBoard(boardRes.data);
+
+      const columnsRes = await api.get<Paginated<Column> | Column[]>(
+        `columns/?board=${id}`
+      );
+      const columnsList = Array.isArray(columnsRes.data)
+        ? columnsRes.data
+        : columnsRes.data.results;
+      setColumns(columnsList);
+
+      const tasksMap: Record<number, Task[]> = {};
+      const usersSet = new Map<number, { id: number; username: string }>();
+      for (const col of columnsList) {
+        const params = new URLSearchParams();
+        params.append('column', String(col.id));
+        if (search) params.append('search', search);
+        if (priorityFilter) params.append('priority', priorityFilter);
+        if (assigneeFilter) params.append('assignee', assigneeFilter);
+        if (sortBy) params.append('ordering', sortBy);
+        const tasksRes = await api.get<Paginated<Task> | Task[]>(
+          `tasks/?${params.toString()}`
+        );
+        const tasksList = Array.isArray(tasksRes.data)
+          ? tasksRes.data
+          : tasksRes.data.results;
+        tasksMap[col.id] = tasksList;
+
+        tasksList.forEach((t) => {
+          if (t.assignee) {
+            usersSet.set(t.assignee.id, {
+              id: t.assignee.id,
+              username: t.assignee.username,
+            });
+          }
+        });
+      }
+
+      setTasks(tasksMap);
+      setAllUsers(Array.from(usersSet.values()));
+    } catch (err) {
+      console.error('Ошибка загрузки доски:', err);
+      toast.error('Не удалось загрузить доску');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onDragEnd = async (result: DropResult) => {
+    if (!result.destination) return;
+    const { source, destination, draggableId } = result;
+
+    if (
+      source.droppableId === destination.droppableId &&
+      source.index === destination.index
+    ) {
+      return;
+    }
+
+    const sourceColId = parseInt(source.droppableId);
+    const destColId = parseInt(destination.droppableId);
+    const newTasks = { ...tasks };
+    const sourceList = [...(newTasks[sourceColId] || [])];
+    const destList = [...(newTasks[destColId] || [])];
+    const [moved] = sourceList.splice(source.index, 1);
+    destList.splice(destination.index, 0, { ...moved, column: destColId });
+    newTasks[sourceColId] = sourceList;
+    newTasks[destColId] = destList;
+    setTasks(newTasks);
+
+    try {
+      await api.post(`tasks/${draggableId}/move/`, {
+        column_id: destColId,
+        order: destination.index,
+      });
+    } catch (err) {
+      console.error('Не удалось переместить задачу:', err);
+      toast.error('Не удалось переместить задачу');
+      loadBoard();
+    }
+  };
+
+  const openCreateModal = (columnId: number) => {
+    setSelectedColumnId(columnId);
+    setShowModal(true);
+  };
+  const openTask = (taskId: number) => {
+    navigate(`/tasks/${taskId}`);
+  };
+  const resetFilters = () => {
+    setSearch('');
+    setPriorityFilter('');
+    setAssigneeFilter('');
+    setSortBy('order');
+  };
+
+  const openCreateColumn = () => {
+    setNewColumnName('');
+    setShowColumnModal(true);
+  };
+  const createColumn = async () => {
+    if (!newColumnName.trim()) return;
+    try {
+      await api.post('columns/', {
+        board: Number(id),
+        name: newColumnName,
+        order: columns.length,
+      });
+      setShowColumnModal(false);
+      setNewColumnName('');
+      toast.success('Колонка создана');
+      loadBoard();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Не удалось создать колонку');
+    }
+  };
+
+  const deleteColumn = async (columnId: number, columnName: string) => {
+    const tasksCount = (tasks[columnId] || []).length;
+
+    const confirmed = window.confirm(
+      `Удалить колонку «${columnName}»?` +
+        (tasksCount > 0
+          ? `\n\nВ ней ${tasksCount} задач(и) — все будут удалены.`
+          : '') +
+        `\n\nЭто действие нельзя отменить.`
+    );
+    if (!confirmed) return;
+
+    setDeletingColumnId(columnId);
+    try {
+      await api.delete(`columns/${columnId}/`);
+      toast.success('Колонка удалена');
+      loadBoard();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Не удалось удалить колонку');
+    } finally {
+      setDeletingColumnId(null);
+    }
+  };
+
+  const openEditBoard = () => {
+    if (!board) return;
+    setEditBoardName(board.name);
+    setEditBoardDescription(board.description || '');
+    setShowEditBoard(true);
+  };
+
+  const saveBoard = async () => {
+    if (!editBoardName.trim()) return;
+    try {
+      await api.patch(`boards/${id}/`, {
+        name: editBoardName,
+        description: editBoardDescription,
+      });
+      setShowEditBoard(false);
+      toast.success('Доска обновлена');
+      loadBoard();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Не удалось сохранить');
+    }
+  };
+
+  const deleteBoard = async () => {
+    if (!board) return;
+    const confirmed = window.confirm(
+      `Удалить доску «${board.name}»?\n\n` +
+        `Все колонки, задачи и комментарии этой доски ` +
+        `будут безвозвратно удалены.\n\n` +
+        `Это действие нельзя отменить.`
+    );
+    if (!confirmed) return;
+
+    const typed = window.prompt(
+      `Для подтверждения введите название доски:`,
+      ''
+    );
+    if (typed !== board.name) {
+      toast.warn('Название не совпадает. Удаление отменено.');
+      return;
+    }
+    setDeletingBoard(true);
+    try {
+      await api.delete(`boards/${board.id}/`);
+      toast.success('Доска удалена');
+      navigate(-1);
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Не удалось удалить доску');
+      setDeletingBoard(false);
+    }
+  };
+  const hasActiveFilters =
+    search !== '' || priorityFilter !== '' || assigneeFilter !== '' || sortBy !== 'order';
+
+  if (loading && !board) {
+    return <div className="kb-loading"><span>Загрузка доски...</span></div>;
+  }
+
+  if (!board) {
+    return <div className="alert alert-danger mt-5">Доска не найдена</div>;
+  }
+
+  return (
+    <div>
+      {/* ═══ Заголовок доски ═══ */}
+      <div className="d-flex justify-content-between align-items-center mb-3">
+        <div>
+          <h2 className="mb-0">{board.name}</h2>
+          {board.description && (
+            <p className="text-muted mb-0">{board.description}</p>
+          )}
+        </div>
+        <div className="d-flex gap-2">
+          {isManager && (
+            <button
+              className="btn btn-outline-secondary btn-sm"
+              onClick={openEditBoard}
+            >
+              ✏️ Редактировать
+            </button>
+          )}
+          {isManager && (
+            <button
+              className="btn btn-outline-primary btn-sm"
+              onClick={openCreateColumn}
+            >
+              + Колонка
+            </button>
+          )}
+          <button
+            className="btn btn-outline-secondary btn-sm"
+            onClick={() => navigate(-1)}
+          >
+            ← Назад
+          </button>
+        </div>
+      </div>
+
+      {/* ═══ Панель фильтров ═══ */}
+      <div className="card mb-4 kb-slide-up">
+        <div className="card-body">
+          <div className="row g-2 align-items-end">
+            <div className="col-md-4">
+              <label className="form-label small mb-1">Поиск</label>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Поиск по названию или описанию..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className="col-md-2">
+              <label className="form-label small mb-1">Приоритет</label>
+              <select
+                className="form-select"
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+              >
+                <option value="">Все</option>
+                <option value="high">Высокий</option>
+                <option value="medium">Средний</option>
+                <option value="low">Низкий</option>
+              </select>
+            </div>
+            <div className="col-md-2">
+              <label className="form-label small mb-1">Исполнитель</label>
+              <select
+                className="form-select"
+                value={assigneeFilter}
+                onChange={(e) => setAssigneeFilter(e.target.value)}
+              >
+                <option value="">Все</option>
+                {allUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.username}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="col-md-2">
+              <label className="form-label small mb-1">Сортировка</label>
+              <select
+                className="form-select"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+              >
+                <option value="order">По порядку</option>
+                <option value="due_date">По сроку</option>
+                <option value="-created_at">Сначала новые</option>
+                <option value="priority">По приоритету</option>
+              </select>
+            </div>
+            <div className="col-md-2">
+              <button
+                className="btn btn-outline-secondary w-100"
+                onClick={resetFilters}
+                disabled={!hasActiveFilters}
+              >
+                Сбросить
+              </button>
+            </div>
+          </div>
+
+          {hasActiveFilters && (
+            <div className="mt-2 small text-muted kb-fade-in">
+              Активны фильтры:
+              {search && <span className="badge bg-info ms-1">поиск: {search}</span>}
+              {priorityFilter && (
+                <span className="badge bg-info ms-1">приоритет: {priorityFilter}</span>
+              )}
+              {assigneeFilter && (
+                <span className="badge bg-info ms-1">исполнитель: {assigneeFilter}</span>
+              )}
+              {sortBy !== 'order' && (
+                <span className="badge bg-info ms-1">сортировка: {sortBy}</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ═══ Канбан-доска ═══ */}
+      <DragDropContext onDragEnd={onDragEnd}>
+        <div className="row">
+          {columns.map((col, colIdx) => {
+            const columnTasks = tasks[col.id] || [];
+            return (
+              <div
+                key={col.id}
+                className="col-md-4 mb-3"
+                style={{ animationDelay: `${colIdx * 0.1}s` }}
+              >
+                <div className="kb-column">
+                  {/* Заголовок колонки */}
+                  <div className="kb-column-header d-flex justify-content-between align-items-center">
+                    <span className="fw-bold">{col.name}</span>
+                    <div className="d-flex align-items-center gap-2">
+                      <span className="kb-column-count">{columnTasks.length}</span>
+                      <button
+                        className="btn btn-sm btn-outline-primary"
+                        onClick={() => openCreateModal(col.id)}
+                        title="Создать задачу"
+                      >
+                        + Задача
+                      </button>
+                      {/* 🆕 Кнопка удаления колонки — только менеджеру */}
+                      {isManager && (
+                        <button
+                          className="btn btn-sm btn-outline-danger"
+                          onClick={() => deleteColumn(col.id, col.name)}
+                          disabled={deletingColumnId === col.id}
+                          title="Удалить колонку"
+                          style={{ padding: '0.2rem 0.5rem' }}
+                        >
+                          {deletingColumnId === col.id ? '...' : '✕'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <Droppable droppableId={String(col.id)}>
+                    {(provided, snapshot) => (
+                      <div
+                        className={`card-body kb-column-drop-zone ${
+                          snapshot.isDraggingOver ? 'is-dragging-over' : ''
+                        }`}
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                      >
+                        {columnTasks.length === 0 && !snapshot.isDraggingOver && (
+                          <p className="text-muted small text-center mb-0 py-4">
+                            {hasActiveFilters
+                              ? 'Ничего не найдено'
+                              : 'Нет задач — перетащите сюда'}
+                          </p>
+                        )}
+
+                        {columnTasks.map((task, index) => (
+                          <Draggable
+                            key={task.id}
+                            draggableId={String(task.id)}
+                            index={index}
+                          >
+                            {(provided, snapshot) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                className={`kb-task-card kb-task-priority-${task.priority} ${
+                                  snapshot.isDragging ? 'is-dragging' : ''
+                                }`}
+                                style={provided.draggableProps.style}
+                              >
+                                <div className="d-flex justify-content-between align-items-start">
+                                  <h6
+                                    className="kb-task-title mb-1"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openTask(task.id);
+                                    }}
+                                  >
+                                    {task.title}
+                                  </h6>
+                                  <span
+                                    className={`badge bg-${
+                                      task.priority === 'high'
+                                        ? 'danger'
+                                        : task.priority === 'medium'
+                                        ? 'warning'
+                                        : 'secondary'
+                                    }`}
+                                    style={{ fontSize: '0.7em' }}
+                                  >
+                                    {task.priority === 'high'
+                                      ? 'высокий'
+                                      : task.priority === 'medium'
+                                      ? 'средний'
+                                      : 'низкий'}
+                                  </span>
+                                </div>
+
+                                {task.description && (
+                                  <p
+                                    className="small text-muted mb-1"
+                                    style={{
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      display: '-webkit-box',
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: 'vertical',
+                                    }}
+                                  >
+                                    {task.description}
+                                  </p>
+                                )}
+
+                                <div className="d-flex justify-content-between align-items-center small">
+                                  <span className="text-muted">
+                                    {task.assignee?.username || 'Без исполнителя'}
+                                  </span>
+                                  {task.due_date && (
+                                    <span
+                                      className={
+                                        new Date(task.due_date) < new Date()
+                                          ? 'text-danger'
+                                          : 'text-muted'
+                                      }
+                                    >
+                                      {task.due_date}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {task.comments_count > 0 && (
+                                  <div className="mt-1 small text-muted">
+                                    💬 {task.comments_count}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                      </div>
+                    )}
+                  </Droppable>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </DragDropContext>
+
+      {/* ═══ Модалка создания задачи ═══ */}
+      {selectedColumnId !== null && (
+        <TaskModal
+          show={showModal}
+          onHide={() => setShowModal(false)}
+          columnId={selectedColumnId}
+          workspaceId={board?.workspace ?? null}
+          onSuccess={() => {
+            setShowModal(false);
+            loadBoard();
+          }}
+        />
+      )}
+
+      {/* ═══ Модалка создания колонки ═══ */}
+      {isManager && showColumnModal && (
+        <div
+          className="kb-modal-backdrop"
+          onClick={() => setShowColumnModal(false)}
+        >
+          <div className="kb-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="kb-modal-header">
+              <h5 className="kb-modal-title">Новая колонка</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowColumnModal(false)}
+              ></button>
+            </div>
+            <div className="kb-modal-body">
+              <label className="form-label">Название колонки</label>
+              <input
+                type="text"
+                className="form-control"
+                value={newColumnName}
+                onChange={(e) => setNewColumnName(e.target.value)}
+                placeholder="Например, На проверке"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') createColumn();
+                }}
+              />
+            </div>
+            <div className="kb-modal-footer">
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowColumnModal(false)}
+              >
+                Отмена
+              </button>
+              <button className="btn btn-primary" onClick={createColumn}>
+                Создать
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Модалка редактирования доски ═══ */}
+      {isManager && showEditBoard && (
+        <div
+          className="kb-modal-backdrop"
+          onClick={() => setShowEditBoard(false)}
+        >
+          <div className="kb-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="kb-modal-header">
+              <h5 className="kb-modal-title">✏️ Редактировать доску</h5>
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setShowEditBoard(false)}
+              ></button>
+            </div>
+            <div className="kb-modal-body">
+              <div className="mb-3">
+                <label className="form-label">Название</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={editBoardName}
+                  onChange={(e) => setEditBoardName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="mb-3">
+                <label className="form-label">Описание</label>
+                <textarea
+                  className="form-control"
+                  rows={3}
+                  value={editBoardDescription}
+                  onChange={(e) => setEditBoardDescription(e.target.value)}
+                  placeholder="Необязательно"
+                />
+              </div>
+            </div>
+            <div
+              className="kb-modal-footer"
+              style={{ justifyContent: 'space-between' }}
+            >
+              <button
+                className="btn btn-outline-danger"
+                onClick={deleteBoard}
+                disabled={deletingBoard}
+              >
+                {deletingBoard ? 'Удаление...' : '🗑 Удалить доску'}
+              </button>
+
+              <div className="d-flex gap-2">
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowEditBoard(false)}
+                >
+                  Отмена
+                </button>
+                <button className="btn btn-primary" onClick={saveBoard}>
+                  Сохранить
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default BoardDetailPage;

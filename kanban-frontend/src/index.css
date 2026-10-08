@@ -1,0 +1,749 @@
+/* ============================================================
+   KanBan — глобальные стили и анимации
+   ============================================================ */
+
+:root {
+  --kb-primary: #6366f1;
+  --kb-primary-dark: #4f46e5;
+  --kb-primary-light: #818cf8;
+  --kb-accent: #8b5cf6;
+  --kb-success: #10b981;
+  --kb-warning: #f59e0b;
+  --kb-danger: #ef4444;
+  --kb-info: #06b6d4;
+
+  --kb-bg: #f9fafb;
+  --kb-bg-card: #ffffff;
+  --kb-text: #1f2937;
+  --kb-text-muted: #6b7280;
+  --kb-border: #e5e7eb;
+
+  --kb-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --kb-gradient-hover: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  --kb-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --kb-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --kb-shadow-lg: 0 10px 25px -3px rgba(99, 102, 241, 0.15), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --kb-shadow-hover: 0 20px 35px -5px rgba(99, 102, 241, 0.25);
+  --kb-shadow-drag: 0 25px 50px -12px rgba(99, 102, 241, 0.4);
+
+  --kb-radius: 12px;
+  --kb-radius-sm: 8px;
+  --kb-radius-lg: 16px;
+
+  --kb-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --kb-transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --kb-transition-slow: 400ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
+  color: var(--kb-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* Анимированный градиент: тёплый жёлтый → холодный голубой → лаванда → снова жёлтый */
+ background: linear-gradient(
+  -45deg,
+  #f7f5a3 0%,
+  #fbf0a0 20%,
+  #c9eed8 40%,
+  #c2e5f2 60%,
+  #d8dbf0 80%,
+  #f7f5a3 100%
+);
+  background-size: 400% 400%;
+  background-attachment: fixed;
+  animation: kb-bg-flow 25s ease infinite;
+  min-height: 100vh;
+}
+
+/* ============================================================
+   KEYFRAMES
+   ============================================================ */
+
+@keyframes kb-fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes kb-bg-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes kb-slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes kb-slideDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes kb-slideInLeft {
+  from { opacity: 0; transform: translateX(-30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes kb-slideInRight {
+  from { opacity: 0; transform: translateX(30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes kb-scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes kb-scaleInPop {
+  0%   { opacity: 0; transform: scale(0.7); }
+  60%  { opacity: 1; transform: scale(1.03); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes kb-pulse-logo {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.06); }
+}
+
+@keyframes kb-pulse-soft {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.02); opacity: 0.85; }
+}
+
+@keyframes kb-spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes kb-gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes kb-shake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-5px); }
+  40%      { transform: translateX(5px); }
+  60%      { transform: translateX(-3px); }
+  80%      { transform: translateX(3px); }
+}
+
+@keyframes kb-modal-in {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes kb-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes kb-task-in {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes kb-badge-pop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+@keyframes kb-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes kb-checkmark {
+  0%   { transform: scale(0) rotate(-45deg); }
+  50%  { transform: scale(1.2) rotate(0deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+/* ============================================================
+   UTILITY КЛАССЫ АНИМАЦИЙ
+   ============================================================ */
+
+.kb-fade-in        { animation: kb-fadeIn 0.35s ease-out both; }
+.kb-slide-up       { animation: kb-slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.kb-slide-down     { animation: kb-slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.kb-slide-in-left  { animation: kb-slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.kb-slide-in-right { animation: kb-slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.kb-scale-in       { animation: kb-scaleIn 0.3s ease-out both; }
+.kb-scale-in-pop   { animation: kb-scaleInPop 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+.kb-delay-1 { animation-delay: 0.05s; }
+.kb-delay-2 { animation-delay: 0.1s; }
+.kb-delay-3 { animation-delay: 0.15s; }
+.kb-delay-4 { animation-delay: 0.2s; }
+.kb-delay-5 { animation-delay: 0.25s; }
+
+/* ============================================================
+   ROUTE TRANSITIONS — плавная смена страниц
+   ============================================================ */
+
+.kb-route-wrapper {
+  animation: kb-fadeIn 0.35s ease-out both;
+}
+
+/* ============================================================
+   NAVBAR
+   ============================================================ */
+
+.kb-navbar {
+  background: var(--kb-gradient);
+  background-size: 200% 200%;
+  animation: kb-gradient-shift 15s ease infinite;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+.kb-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  color: white !important;
+  text-decoration: none;
+  transition: transform var(--kb-transition-fast);
+}
+
+.kb-logo:hover {
+  transform: scale(1.03);
+  color: white !important;
+}
+
+.kb-logo-icon {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  backdrop-filter: blur(10px);
+  animation: kb-pulse-logo 3s ease-in-out infinite;
+}
+
+.kb-nav-link {
+  color: rgba(255, 255, 255, 0.85) !important;
+  font-weight: 500;
+  padding: 0.5rem 1rem !important;
+  border-radius: var(--kb-radius-sm);
+  transition: all var(--kb-transition-fast);
+  position: relative;
+}
+
+.kb-nav-link::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: white;
+  border-radius: 1px;
+  transform: translateX(-50%);
+  transition: width var(--kb-transition-base);
+}
+
+.kb-nav-link:hover::after,
+.kb-nav-link.active::after {
+  width: 60%;
+}
+
+.kb-nav-link:hover {
+  color: white !important;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.kb-nav-link.active {
+  color: white !important;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.kb-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  transition: all var(--kb-transition-fast);
+}
+
+.kb-avatar:hover {
+  transform: scale(1.1);
+  border-color: white;
+}
+
+/* ============================================================
+   КНОПКИ
+   ============================================================ */
+
+.btn {
+  border-radius: var(--kb-radius-sm);
+  font-weight: 500;
+  transition: all var(--kb-transition-fast);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--kb-shadow-md);
+}
+
+.btn:active {
+  transform: translateY(1px);
+  box-shadow: var(--kb-shadow-sm);
+}
+
+.btn-primary {
+  background: var(--kb-gradient) !important;
+  border: none !important;
+  background-size: 150% 150% !important;
+}
+
+.btn-primary:hover {
+  background: var(--kb-gradient-hover) !important;
+  box-shadow: var(--kb-shadow-lg) !important;
+}
+
+.btn-outline-primary {
+  border-color: var(--kb-primary) !important;
+  color: var(--kb-primary) !important;
+}
+
+.btn-outline-primary:hover {
+  background: var(--kb-primary) !important;
+  color: white !important;
+}
+
+/* ============================================================
+   КАРТОЧКИ
+   ============================================================ */
+
+.kb-card {
+  background: var(--kb-bg-card);
+  border-radius: var(--kb-radius);
+  box-shadow: var(--kb-shadow-sm);
+  border: 1px solid var(--kb-border);
+  transition: all var(--kb-transition-base);
+}
+
+.kb-card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--kb-shadow-lg);
+  border-color: var(--kb-primary-light);
+}
+
+/* Красивая полоса прокрутки в истории */
+.kb-card ::-webkit-scrollbar {
+  width: 6px;
+}
+
+.kb-card ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kb-card ::-webkit-scrollbar-thumb {
+  background: var(--kb-border);
+  border-radius: 3px;
+}
+
+.kb-card ::-webkit-scrollbar-thumb:hover {
+  background: var(--kb-primary-light);
+}
+
+/* ============================================================
+   КАНБАН-КОЛОНКИ
+   ============================================================ */
+
+.kb-column {
+  background: var(--kb-bg-card);
+  border-radius: var(--kb-radius);
+  box-shadow: var(--kb-shadow-sm);
+  border: 1px solid var(--kb-border);
+  transition: box-shadow var(--kb-transition-base), transform var(--kb-transition-base);
+  height: 100%;
+  animation: kb-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.kb-column:hover {
+  box-shadow: var(--kb-shadow-md);
+}
+
+/* Подсветка колонки при перетаскивании */
+.kb-column.is-dragging-over {
+  box-shadow: var(--kb-shadow-lg);
+  transform: scale(1.01);
+  border-color: var(--kb-primary);
+}
+
+.kb-column-header {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.05), rgba(139, 92, 246, 0.08));
+  border-radius: var(--kb-radius) var(--kb-radius) 0 0;
+  border-bottom: 1px solid var(--kb-border);
+  padding: 12px 16px;
+}
+
+.kb-column-count {
+  background: var(--kb-primary);
+  color: white;
+  font-size: 0.75rem;
+  padding: 3px 9px;
+  border-radius: 10px;
+  font-weight: 600;
+  animation: kb-badge-pop 0.3s ease-out;
+}
+
+.kb-column-drop-zone {
+  min-height: 150px;
+  transition: background-color var(--kb-transition-base);
+}
+
+.kb-column-drop-zone.is-dragging-over {
+  background-color: rgba(99, 102, 241, 0.06);
+}
+
+/* ============================================================
+   КАРТОЧКИ ЗАДАЧ
+   ============================================================ */
+
+.kb-task-card {
+  background: white;
+  border-radius: var(--kb-radius-sm);
+  border: 1px solid var(--kb-border);
+  border-left: 4px solid var(--kb-primary);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  cursor: grab;
+  transition: all var(--kb-transition-fast);
+  box-shadow: var(--kb-shadow-sm);
+  animation: kb-task-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  position: relative;
+}
+
+.kb-task-card:hover {
+  transform: translateX(3px) scale(1.01);
+  box-shadow: var(--kb-shadow-md);
+  border-left-color: var(--kb-accent);
+}
+
+.kb-task-card:active {
+  cursor: grabbing;
+}
+
+/* Состояние при перетаскивании */
+.kb-task-card.is-dragging {
+  transform: rotate(2deg) scale(1.02);
+  box-shadow: var(--kb-shadow-drag);
+  cursor: grabbing;
+  opacity: 0.95;
+  z-index: 9999;
+}
+
+.kb-task-card.is-dragging::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: calc(var(--kb-radius-sm) + 2px);
+  background: var(--kb-gradient);
+  z-index: -1;
+  opacity: 0.4;
+  filter: blur(8px);
+}
+
+.kb-task-priority-high   { border-left-color: var(--kb-danger) !important; }
+.kb-task-priority-medium { border-left-color: var(--kb-warning) !important; }
+.kb-task-priority-low    { border-left-color: var(--kb-info) !important; }
+
+.kb-task-title {
+  color: var(--kb-primary);
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--kb-transition-fast);
+  position: relative;
+  display: inline-block;
+}
+
+.kb-task-title::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--kb-primary);
+  transition: width var(--kb-transition-base);
+}
+
+.kb-task-title:hover::after {
+  width: 100%;
+}
+
+/* ============================================================
+   ФОРМЫ
+   ============================================================ */
+
+.form-control,
+.form-select {
+  border-radius: var(--kb-radius-sm) !important;
+  border: 1px solid var(--kb-border) !important;
+  transition: all var(--kb-transition-fast);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--kb-primary) !important;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12) !important;
+  transform: translateY(-1px);
+}
+
+/* ============================================================
+   БЕЙДЖИ
+   ============================================================ */
+
+.badge {
+  font-weight: 500;
+  padding: 0.35em 0.7em;
+  border-radius: 6px;
+  transition: transform var(--kb-transition-fast);
+}
+
+.badge:hover {
+  transform: scale(1.05);
+}
+
+/* ============================================================
+   МОДАЛЬНЫЕ ОКНА
+   ============================================================ */
+
+.kb-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1040;
+  padding: 20px;
+  animation: kb-backdrop-in 0.25s ease-out;
+}
+
+.kb-modal-content {
+  background: white;
+  border-radius: var(--kb-radius-lg);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  animation: kb-modal-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.kb-modal-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--kb-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.kb-modal-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.kb-modal-body {
+  padding: 24px;
+}
+
+.kb-modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--kb-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Bootstrap модалки тоже анимируем */
+.modal-content {
+  border-radius: var(--kb-radius-lg) !important;
+  border: none !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35) !important;
+  animation: kb-modal-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.modal-backdrop.show {
+  animation: kb-backdrop-in 0.25s ease-out;
+}
+
+/* ============================================================
+   PAGE TRANSITIONS
+   ============================================================ */
+
+.page-enter {
+  animation: kb-fadeIn 0.35s ease-out;
+}
+
+/* ============================================================
+   ЗАГРУЗКА
+   ============================================================ */
+
+.kb-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  color: var(--kb-text-muted);
+}
+
+.kb-loading::before {
+  content: '';
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--kb-border);
+  border-top-color: var(--kb-primary);
+  border-radius: 50%;
+  margin-right: 12px;
+  animation: kb-spin-slow 0.8s linear infinite;
+}
+
+/* Skeleton-загрузка карточек */
+.kb-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--kb-border) 25%,
+    #f3f4f6 50%,
+    var(--kb-border) 75%
+  );
+  background-size: 200% 100%;
+  animation: kb-shimmer 1.5s ease-in-out infinite;
+  border-radius: var(--kb-radius-sm);
+}
+
+/* ============================================================
+   АВТОРИЗАЦИЯ
+   ============================================================ */
+
+.kb-auth-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--kb-gradient);
+  background-size: 200% 200%;
+  animation: kb-gradient-shift 15s ease infinite;
+  padding: 20px;
+}
+
+.kb-auth-card {
+  background: white;
+  border-radius: var(--kb-radius-lg);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  padding: 40px;
+  width: 100%;
+  max-width: 420px;
+  animation: kb-slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.kb-auth-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--kb-primary);
+  margin-bottom: 8px;
+  letter-spacing: -0.03em;
+}
+
+/* ============================================================
+   ССЫЛКИ И ФУТЕР
+   ============================================================ */
+
+a {
+  color: var(--kb-primary);
+  text-decoration: none;
+  transition: color var(--kb-transition-fast);
+}
+
+a:hover {
+  color: var(--kb-primary-dark);
+}
+
+.kb-footer {
+  background: white;
+  border-top: 1px solid var(--kb-border);
+  color: var(--kb-text-muted);
+}
+
+/* ============================================================
+   TOAST-УВЕДОМЛЕНИЯ
+   ============================================================ */
+
+.Toastify__toast {
+  border-radius: var(--kb-radius) !important;
+  font-family: 'Inter', sans-serif !important;
+}
+
+.Toastify__toast--success { background: var(--kb-success) !important; }
+.Toastify__toast--error   { background: var(--kb-danger) !important; }
+.Toastify__toast--info    { background: var(--kb-primary) !important; }
+
+/* ============================================================
+   HOVER-ЭФФЕКТЫ НА КНОПКАХ СО СПИСКАМИ
+   ============================================================ */
+
+.kb-hover-lift {
+  transition: transform var(--kb-transition-base), box-shadow var(--kb-transition-base);
+}
+
+.kb-hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--kb-shadow-lg);
+}
+
+/* ============================================================
+   АНИМАЦИЯ СПИСКА УЧАСТНИКОВ
+   ============================================================ */
+
+.kb-member-row {
+  animation: kb-slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: background-color var(--kb-transition-fast);
+}
+
+.kb-member-row:hover {
+  background-color: rgba(99, 102, 241, 0.04);
+}
