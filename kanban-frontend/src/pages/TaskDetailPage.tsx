@@ -622,6 +622,7 @@ function TaskDetailPage() {
       {showEdit && (
         <div className="kb-modal-backdrop" onClick={() => setShowEdit(false)}>
           <div className="kb-modal-content" onClick={(e) => e.stopPropagation()}>
+
             <div className="kb-modal-header">
               <h5 className="kb-modal-title">✏️ Редактировать задачу</h5>
               <button
@@ -698,19 +699,6 @@ function TaskDetailPage() {
                 </select>
               </div>
             </div>
-
-            {task && (
-              <ConfirmDeleteModal
-                show={showDeleteModal}
-                title="Удаление задачи"
-                message={`Вы собираетесь удалить задачу «${task.title}».\n\nВсе комментарии, файлы и история изменений будут безвозвратно удалены.`}
-                itemName={task.title}
-                onConfirm={deleteTask}
-                onCancel={() => setShowDeleteModal(false)}
-                loading={deleting}
-              />
-            )}
-
             <div className="kb-modal-footer">
               <button
                 className="btn btn-secondary"
@@ -726,8 +714,22 @@ function TaskDetailPage() {
                 {saving ? 'Сохранение...' : 'Сохранить'}
               </button>
             </div>
+
           </div>
         </div>
+      )}
+
+      {/* ═══ Модалка удаления — ВНЕ edit-модалки ═══ */}
+      {task && (
+        <ConfirmDeleteModal
+          show={showDeleteModal}
+          title="Удаление задачи"
+          message={`Вы собираетесь удалить задачу «${task.title}».\n\nВсе комментарии, файлы и история изменений будут безвозвратно удалены.`}
+          itemName={task.title}
+          onConfirm={deleteTask}
+          onCancel={() => setShowDeleteModal(false)}
+          loading={deleting}
+        />
       )}
     </div>
   );
