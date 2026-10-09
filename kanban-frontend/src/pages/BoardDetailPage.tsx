@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
-import { toast } from 'react-toastify';
 import api from '../api/axiosConfig';
 import type { Board, Column, Task, Paginated } from '../types';
 import TaskModal from '../components/TaskModal';
@@ -11,33 +10,35 @@ import { useWorkspaceRole } from '../hooks/useWorkspaceRole';
 function BoardDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
   const [board, setBoard] = useState<Board | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
   const [tasks, setTasks] = useState<Record<number, Task[]>>({});
   const [loading, setLoading] = useState(true);
+
   const { isManager } = useWorkspaceRole(board?.workspace || null);
+
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [sortBy, setSortBy] = useState('order');
+
   const [allUsers, setAllUsers] = useState<{ id: number; username: string }[]>([]);
+
   const [showModal, setShowModal] = useState(false);
   const [selectedColumnId, setSelectedColumnId] = useState<number | null>(null);
+
   const [showColumnModal, setShowColumnModal] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
-  const [showEditBoard, setShowEditBoard] = useState(false);
-  const [editBoardName, setEditBoardName] = useState('');
-  const [editBoardDescription, setEditBoardDescription] = useState('');
-  const [deletingBoard, setDeletingBoard] = useState(false);
-  const [deletingColumnId, setDeletingColumnId] = useState<number | null>(null);
+
   useEffect(() => {
     loadBoard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, search, priorityFilter, assigneeFilter, sortBy]);
 
   const loadBoard = async () => {
     try {
       setLoading(true);
-
       const boardRes = await api.get<Board>(`boards/${id}/`);
       setBoard(boardRes.data);
 
@@ -51,6 +52,7 @@ function BoardDetailPage() {
 
       const tasksMap: Record<number, Task[]> = {};
       const usersSet = new Map<number, { id: number; username: string }>();
+
       for (const col of columnsList) {
         const params = new URLSearchParams();
         params.append('column', String(col.id));
@@ -58,6 +60,7 @@ function BoardDetailPage() {
         if (priorityFilter) params.append('priority', priorityFilter);
         if (assigneeFilter) params.append('assignee', assigneeFilter);
         if (sortBy) params.append('ordering', sortBy);
+
         const tasksRes = await api.get<Paginated<Task> | Task[]>(
           `tasks/?${params.toString()}`
         );
@@ -80,7 +83,6 @@ function BoardDetailPage() {
       setAllUsers(Array.from(usersSet.values()));
     } catch (err) {
       console.error('Ошибка загрузки доски:', err);
-      toast.error('Не удалось загрузить доску');
     } finally {
       setLoading(false);
     }
@@ -99,11 +101,14 @@ function BoardDetailPage() {
 
     const sourceColId = parseInt(source.droppableId);
     const destColId = parseInt(destination.droppableId);
+
     const newTasks = { ...tasks };
     const sourceList = [...(newTasks[sourceColId] || [])];
     const destList = [...(newTasks[destColId] || [])];
+
     const [moved] = sourceList.splice(source.index, 1);
     destList.splice(destination.index, 0, { ...moved, column: destColId });
+
     newTasks[sourceColId] = sourceList;
     newTasks[destColId] = destList;
     setTasks(newTasks);
@@ -115,8 +120,35 @@ function BoardDetailPage() {
       });
     } catch (err) {
       console.error('Не удалось переместить задачу:', err);
-      toast.error('Не удалось переместить задачу');
       loadBoard();
+    }
+  };
+
+  // ─── Быстрое перемещение задачи между колонками ─────
+  const moveTaskToColumn = async (taskId: number, toColumnId: number) => {
+    try {
+      await api.post(`tasks/${taskId}/move/`, {
+        column_id: toColumnId,
+        order: 0,
+      });
+      loadBoard();
+    } catch (err: any) {
+      console.error('Ошибка перемещения:', err);
+      alert(err.response?.data?.detail || 'Не удалось переместить задачу');
+    }
+  };
+
+  // ─── Быстрое удаление задачи ─────────────────────
+  const deleteTask = async (taskId: number, title: string) => {
+    if (!window.confirm(`Удалить задачу «${title}»?\n\nЭто действие нельзя отменить.`)) {
+      return;
+    }
+    try {
+      await api.delete(`tasks/${taskId}/`);
+      loadBoard();
+    } catch (err: any) {
+      console.error('Ошибка удаления:', err);
+      alert(err.response?.data?.detail || 'Не удалось удалить задачу');
     }
   };
 
@@ -124,9 +156,11 @@ function BoardDetailPage() {
     setSelectedColumnId(columnId);
     setShowModal(true);
   };
+
   const openTask = (taskId: number) => {
     navigate(`/tasks/${taskId}`);
   };
+
   const resetFilters = () => {
     setSearch('');
     setPriorityFilter('');
@@ -138,6 +172,7 @@ function BoardDetailPage() {
     setNewColumnName('');
     setShowColumnModal(true);
   };
+
   const createColumn = async () => {
     if (!newColumnName.trim()) return;
     try {
@@ -148,92 +183,22 @@ function BoardDetailPage() {
       });
       setShowColumnModal(false);
       setNewColumnName('');
-      toast.success('Колонка создана');
       loadBoard();
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Не удалось создать колонку');
+      console.error('Ошибка создания колонки:', err);
+      alert(err.response?.data?.detail || 'Не удалось создать колонку');
     }
   };
 
-  const deleteColumn = async (columnId: number, columnName: string) => {
-    const tasksCount = (tasks[columnId] || []).length;
-
-    const confirmed = window.confirm(
-      `Удалить колонку «${columnName}»?` +
-        (tasksCount > 0
-          ? `\n\nВ ней ${tasksCount} задач(и) — все будут удалены.`
-          : '') +
-        `\n\nЭто действие нельзя отменить.`
-    );
-    if (!confirmed) return;
-
-    setDeletingColumnId(columnId);
-    try {
-      await api.delete(`columns/${columnId}/`);
-      toast.success('Колонка удалена');
-      loadBoard();
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Не удалось удалить колонку');
-    } finally {
-      setDeletingColumnId(null);
-    }
-  };
-
-  const openEditBoard = () => {
-    if (!board) return;
-    setEditBoardName(board.name);
-    setEditBoardDescription(board.description || '');
-    setShowEditBoard(true);
-  };
-
-  const saveBoard = async () => {
-    if (!editBoardName.trim()) return;
-    try {
-      await api.patch(`boards/${id}/`, {
-        name: editBoardName,
-        description: editBoardDescription,
-      });
-      setShowEditBoard(false);
-      toast.success('Доска обновлена');
-      loadBoard();
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Не удалось сохранить');
-    }
-  };
-
-  const deleteBoard = async () => {
-    if (!board) return;
-    const confirmed = window.confirm(
-      `Удалить доску «${board.name}»?\n\n` +
-        `Все колонки, задачи и комментарии этой доски ` +
-        `будут безвозвратно удалены.\n\n` +
-        `Это действие нельзя отменить.`
-    );
-    if (!confirmed) return;
-
-    const typed = window.prompt(
-      `Для подтверждения введите название доски:`,
-      ''
-    );
-    if (typed !== board.name) {
-      toast.warn('Название не совпадает. Удаление отменено.');
-      return;
-    }
-    setDeletingBoard(true);
-    try {
-      await api.delete(`boards/${board.id}/`);
-      toast.success('Доска удалена');
-      navigate(-1);
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Не удалось удалить доску');
-      setDeletingBoard(false);
-    }
-  };
   const hasActiveFilters =
     search !== '' || priorityFilter !== '' || assigneeFilter !== '' || sortBy !== 'order';
 
   if (loading && !board) {
-    return <div className="kb-loading"><span>Загрузка доски...</span></div>;
+    return (
+      <div className="kb-loading">
+        <span>Загрузка доски...</span>
+      </div>
+    );
   }
 
   if (!board) {
@@ -242,8 +207,8 @@ function BoardDetailPage() {
 
   return (
     <div>
-      {/* ═══ Заголовок доски ═══ */}
-      <div className="d-flex justify-content-between align-items-center mb-3">
+      {/* Заголовок */}
+      <div className="d-flex justify-content-between align-items-center mb-3 kb-fade-in">
         <div>
           <h2 className="mb-0">{board.name}</h2>
           {board.description && (
@@ -251,14 +216,6 @@ function BoardDetailPage() {
           )}
         </div>
         <div className="d-flex gap-2">
-          {isManager && (
-            <button
-              className="btn btn-outline-secondary btn-sm"
-              onClick={openEditBoard}
-            >
-              ✏️ Редактировать
-            </button>
-          )}
           {isManager && (
             <button
               className="btn btn-outline-primary btn-sm"
@@ -276,7 +233,7 @@ function BoardDetailPage() {
         </div>
       </div>
 
-      {/* ═══ Панель фильтров ═══ */}
+      {/* Панель фильтров */}
       <div className="card mb-4 kb-slide-up">
         <div className="card-body">
           <div className="row g-2 align-items-end">
@@ -290,6 +247,7 @@ function BoardDetailPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
+
             <div className="col-md-2">
               <label className="form-label small mb-1">Приоритет</label>
               <select
@@ -303,6 +261,7 @@ function BoardDetailPage() {
                 <option value="low">Низкий</option>
               </select>
             </div>
+
             <div className="col-md-2">
               <label className="form-label small mb-1">Исполнитель</label>
               <select
@@ -318,6 +277,7 @@ function BoardDetailPage() {
                 ))}
               </select>
             </div>
+
             <div className="col-md-2">
               <label className="form-label small mb-1">Сортировка</label>
               <select
@@ -331,6 +291,7 @@ function BoardDetailPage() {
                 <option value="priority">По приоритету</option>
               </select>
             </div>
+
             <div className="col-md-2">
               <button
                 className="btn btn-outline-secondary w-100"
@@ -360,11 +321,14 @@ function BoardDetailPage() {
         </div>
       </div>
 
-      {/* ═══ Канбан-доска ═══ */}
+      {/* Канбан-доска */}
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="row">
           {columns.map((col, colIdx) => {
             const columnTasks = tasks[col.id] || [];
+            const prevColumn = colIdx > 0 ? columns[colIdx - 1] : null;
+            const nextColumn = colIdx < columns.length - 1 ? columns[colIdx + 1] : null;
+
             return (
               <div
                 key={col.id}
@@ -372,7 +336,6 @@ function BoardDetailPage() {
                 style={{ animationDelay: `${colIdx * 0.1}s` }}
               >
                 <div className="kb-column">
-                  {/* Заголовок колонки */}
                   <div className="kb-column-header d-flex justify-content-between align-items-center">
                     <span className="fw-bold">{col.name}</span>
                     <div className="d-flex align-items-center gap-2">
@@ -384,18 +347,6 @@ function BoardDetailPage() {
                       >
                         + Задача
                       </button>
-                      {/* 🆕 Кнопка удаления колонки — только менеджеру */}
-                      {isManager && (
-                        <button
-                          className="btn btn-sm btn-outline-danger"
-                          onClick={() => deleteColumn(col.id, col.name)}
-                          disabled={deletingColumnId === col.id}
-                          title="Удалить колонку"
-                          style={{ padding: '0.2rem 0.5rem' }}
-                        >
-                          {deletingColumnId === col.id ? '...' : '✕'}
-                        </button>
-                      )}
                     </div>
                   </div>
 
@@ -452,11 +403,7 @@ function BoardDetailPage() {
                                     }`}
                                     style={{ fontSize: '0.7em' }}
                                   >
-                                    {task.priority === 'high'
-                                      ? 'высокий'
-                                      : task.priority === 'medium'
-                                      ? 'средний'
-                                      : 'низкий'}
+                                    {task.priority}
                                   </span>
                                 </div>
 
@@ -497,6 +444,46 @@ function BoardDetailPage() {
                                     💬 {task.comments_count}
                                   </div>
                                 )}
+
+                                {/* ─── БЫСТРЫЕ ДЕЙСТВИЯ ─── */}
+                                <div className="kb-task-actions">
+                                  {prevColumn && (
+                                    <button
+                                      className="kb-task-action-btn kb-task-action-back"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        moveTaskToColumn(task.id, prevColumn.id);
+                                      }}
+                                      title={`Вернуть в «${prevColumn.name}»`}
+                                    >
+                                      ← {prevColumn.name}
+                                    </button>
+                                  )}
+
+                                  {nextColumn && (
+                                    <button
+                                      className="kb-task-action-btn kb-task-action-forward"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        moveTaskToColumn(task.id, nextColumn.id);
+                                      }}
+                                      title={`Переместить в «${nextColumn.name}»`}
+                                    >
+                                      {nextColumn.name} →
+                                    </button>
+                                  )}
+
+                                  <button
+                                    className="kb-task-action-btn kb-task-action-delete"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      deleteTask(task.id, task.title);
+                                    }}
+                                    title="Удалить задачу"
+                                  >
+                                    🗑
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </Draggable>
@@ -512,13 +499,12 @@ function BoardDetailPage() {
         </div>
       </DragDropContext>
 
-      {/* ═══ Модалка создания задачи ═══ */}
       {selectedColumnId !== null && (
         <TaskModal
           show={showModal}
           onHide={() => setShowModal(false)}
           columnId={selectedColumnId}
-          workspaceId={board?.workspace ?? null}
+          workspaceId={board.workspace}
           onSuccess={() => {
             setShowModal(false);
             loadBoard();
@@ -526,13 +512,16 @@ function BoardDetailPage() {
         />
       )}
 
-      {/* ═══ Модалка создания колонки ═══ */}
+      {/* Модалка создания колонки */}
       {isManager && showColumnModal && (
         <div
           className="kb-modal-backdrop"
           onClick={() => setShowColumnModal(false)}
         >
-          <div className="kb-modal-content" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="kb-modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="kb-modal-header">
               <h5 className="kb-modal-title">Новая колонка</h5>
               <button
@@ -548,7 +537,7 @@ function BoardDetailPage() {
                 className="form-control"
                 value={newColumnName}
                 onChange={(e) => setNewColumnName(e.target.value)}
-                placeholder="Например, На проверке"
+                placeholder="Например, Review"
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') createColumn();
@@ -565,71 +554,6 @@ function BoardDetailPage() {
               <button className="btn btn-primary" onClick={createColumn}>
                 Создать
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══ Модалка редактирования доски ═══ */}
-      {isManager && showEditBoard && (
-        <div
-          className="kb-modal-backdrop"
-          onClick={() => setShowEditBoard(false)}
-        >
-          <div className="kb-modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="kb-modal-header">
-              <h5 className="kb-modal-title">✏️ Редактировать доску</h5>
-              <button
-                type="button"
-                className="btn-close"
-                onClick={() => setShowEditBoard(false)}
-              ></button>
-            </div>
-            <div className="kb-modal-body">
-              <div className="mb-3">
-                <label className="form-label">Название</label>
-                <input
-                  type="text"
-                  className="form-control"
-                  value={editBoardName}
-                  onChange={(e) => setEditBoardName(e.target.value)}
-                  autoFocus
-                />
-              </div>
-              <div className="mb-3">
-                <label className="form-label">Описание</label>
-                <textarea
-                  className="form-control"
-                  rows={3}
-                  value={editBoardDescription}
-                  onChange={(e) => setEditBoardDescription(e.target.value)}
-                  placeholder="Необязательно"
-                />
-              </div>
-            </div>
-            <div
-              className="kb-modal-footer"
-              style={{ justifyContent: 'space-between' }}
-            >
-              <button
-                className="btn btn-outline-danger"
-                onClick={deleteBoard}
-                disabled={deletingBoard}
-              >
-                {deletingBoard ? 'Удаление...' : '🗑 Удалить доску'}
-              </button>
-
-              <div className="d-flex gap-2">
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setShowEditBoard(false)}
-                >
-                  Отмена
-                </button>
-                <button className="btn btn-primary" onClick={saveBoard}>
-                  Сохранить
-                </button>
-              </div>
             </div>
           </div>
         </div>
