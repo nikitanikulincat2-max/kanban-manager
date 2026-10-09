@@ -6,10 +6,12 @@ import api from '../api/axiosConfig';
 import type { Board, Column, Task, Paginated } from '../types';
 import TaskModal from '../components/TaskModal';
 import { useWorkspaceRole } from '../hooks/useWorkspaceRole';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 function BoardDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { confirm } = useConfirm();
 
   const [board, setBoard] = useState<Board | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
@@ -129,7 +131,7 @@ function BoardDetailPage() {
     }
   };
 
-  // ─── Быстрое перемещение задачи между колонками ─────
+  // ─── Быстрое перемещение задачи ─────
   const moveTaskToColumn = async (taskId: number, toColumnId: number) => {
     try {
       await api.post(`tasks/${taskId}/move/`, {
@@ -143,15 +145,17 @@ function BoardDetailPage() {
     }
   };
 
-  // ─── Быстрое удаление задачи ─────────────────────
   const deleteTask = async (taskId: number, title: string) => {
-    if (
-      !window.confirm(
-        `Удалить задачу «${title}»?\n\nЭто действие нельзя отменить.`
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: '🗑 Удаление задачи',
+      message: `Удалить задачу «${title}»?\n\nЭто действие нельзя отменить.`,
+      confirmText: 'Удалить',
+      cancelText: 'Отмена',
+      variant: 'danger',
+    });
+
+    if (!ok) return;
+
     try {
       await api.delete(`tasks/${taskId}/`);
       loadBoard();
@@ -214,14 +218,12 @@ function BoardDetailPage() {
   }
 
   if (!board) {
-    return (
-      <div className="alert alert-danger mt-5">Доска не найдена</div>
-    );
+    return <div className="alert alert-danger mt-5">Доска не найдена</div>;
   }
 
   return (
     <div>
-      {/* ─── Заголовок доски ─── */}
+      {/* Заголовок доски */}
       <div className="kb-board-header kb-fade-in">
         <div>
           <h2 className="mb-0">{board.name}</h2>
@@ -247,7 +249,7 @@ function BoardDetailPage() {
         </div>
       </div>
 
-      {/* ─── Мобильная кнопка фильтров ─── */}
+      {/* Мобильная кнопка фильтров */}
       <button
         className="kb-filters-toggle"
         onClick={() => setShowFilters(!showFilters)}
@@ -269,7 +271,7 @@ function BoardDetailPage() {
         <span style={{ float: 'right' }}>{showFilters ? '▲' : '▼'}</span>
       </button>
 
-      {/* ─── Панель фильтров (сворачивается на мобилке) ─── */}
+      {/* Панель фильтров */}
       <div className={`kb-filters-panel ${showFilters ? 'is-open' : ''}`}>
         <div className="card mb-4 kb-slide-up">
           <div className="card-body">
@@ -367,12 +369,12 @@ function BoardDetailPage() {
         </div>
       </div>
 
-      {/* ─── Мобильная подсказка про скролл ─── */}
+      {/* Мобильная подсказка */}
       <div className="kb-mobile-hint">
         👈 Проведите, чтобы увидеть все колонки 👉
       </div>
 
-      {/* ─── Канбан-доска ─── */}
+      {/* Канбан-доска */}
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="kb-board-scroll">
           {columns.map((col, colIdx) => {
@@ -501,7 +503,7 @@ function BoardDetailPage() {
                                   </div>
                                 )}
 
-                                {/* ─── Быстрые действия ─── */}
+                                {/* Быстрые действия */}
                                 <div className="kb-task-actions">
                                   {prevColumn && (
                                     <button
@@ -561,7 +563,7 @@ function BoardDetailPage() {
         </div>
       </DragDropContext>
 
-      {/* ─── Модалка создания задачи ─── */}
+      {/* Модалка создания задачи */}
       {selectedColumnId !== null && board && (
         <TaskModal
           show={showModal}
@@ -575,7 +577,7 @@ function BoardDetailPage() {
         />
       )}
 
-      {/* ─── Модалка создания колонки ─── */}
+      {/* Модалка создания колонки */}
       {isManager && showColumnModal && (
         <div
           className="kb-modal-backdrop"

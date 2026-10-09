@@ -1,6 +1,7 @@
 import ReactDOM from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App';
+import { ConfirmProvider } from './contexts/ConfirmContext';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './index.css';
 
@@ -14,6 +15,7 @@ registerSW({
   },
 });
 
+// Проверяем обновления каждые 30 минут
 if ('serviceWorker' in navigator) {
   setInterval(
     () => {
@@ -25,4 +27,8 @@ if ('serviceWorker' in navigator) {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <ConfirmProvider>
+    <App />
+  </ConfirmProvider>
+);

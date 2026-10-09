@@ -3,14 +3,16 @@ import type { FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/axiosConfig';
 import type { Workspace, Paginated } from '../types';
-import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 function WorkspaceListPage() {
-  const { user } = useAuth();
+  const { confirm } = useConfirm();
+
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     loadWorkspaces();
@@ -24,7 +26,9 @@ function WorkspaceListPage() {
       const list = Array.isArray(res.data) ? res.data : res.data.results;
       setWorkspaces(list);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Не удалось загрузить пространства');
+      setError(
+        err.response?.data?.detail || 'Не удалось загрузить пространства'
+      );
     } finally {
       setLoading(false);
     }
@@ -43,9 +47,29 @@ function WorkspaceListPage() {
     }
   };
 
-  if (loading) return <div className="kb-loading"><span>Загрузка пространств...</span></div>;
+  const deleteWorkspace = async (ws: Workspace) => {
+    const ok = await confirm({
+      title: '🗑 Удаление пространства',
+      message: `Удалить пространство «${ws.name}»?\n\nВсе доски, задачи и комментарии будут удалены безвозвратно.`,
+      confirmText: 'Удалить',
+      cancelText: 'Отмена',
+      variant: 'danger',
+    });
 
-  const canCreate = user?.is_superuser || user?.is_manager;
+    if (!ok) return;
+
+    setDeletingId(ws.id);
+    try {
+      await api.delete(`workspaces/${ws.id}/`);
+      loadWorkspaces();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Не удалось удалить пространство');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  if (loading) return <div className="kb-loading">Загрузка пространств...</div>;
 
   return (
     <div className="kb-fade-in">
@@ -55,37 +79,25 @@ function WorkspaceListPage() {
 
       {error && <div className="alert alert-danger">{error}</div>}
 
-      {/* Форма создания — только для менеджеров */}
-      {canCreate ? (
-        <form onSubmit={createWorkspace} className="mb-4 d-flex gap-2">
-          <input
-            className="form-control form-control-lg"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Название нового пространства"
-            required
-          />
-          <button type="submit" className="btn btn-primary btn-lg px-4">
-            + Создать
-          </button>
-        </form>
-      ) : (
-        <div className="alert alert-info kb-slide-up">
-          🔒 Создавать пространства может только пользователь с ролью{' '}
-          <strong>«Менеджер»</strong>. Обратитесь к администратору, чтобы
-          получить эту роль.
-        </div>
-      )}
+      <form onSubmit={createWorkspace} className="mb-4 d-flex gap-2">
+        <input
+          className="form-control form-control-lg"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Название нового пространства"
+          required
+        />
+        <button type="submit" className="btn btn-primary btn-lg px-4">
+          + Создать
+        </button>
+      </form>
 
-      {/* Список пространств */}
       {workspaces.length === 0 ? (
         <div className="kb-card p-5 text-center">
           <div style={{ fontSize: 48, marginBottom: 16 }}>📋</div>
           <h5>Пока нет ни одного пространства</h5>
           <p className="text-muted mb-0">
-            {canCreate
-              ? 'Создайте первое пространство для работы с задачами'
-              : 'Вы ещё не добавлены ни в одно пространство. Попросите менеджера пригласить вас.'}
+            Создайте первое пространство для работы с задачами
           </p>
         </div>
       ) : (
@@ -96,11 +108,11 @@ function WorkspaceListPage() {
               className="col-md-6 col-lg-4 mb-3 kb-slide-up"
               style={{ animationDelay: `${i * 0.05}s` }}
             >
-              <Link
-                to={`/workspaces/${w.id}`}
-                className="text-decoration-none text-dark"
-              >
-                <div className="kb-card kb-card-hover p-4 h-100">
+              <div className="kb-card kb-card-hover p-4 h-100 position-relative">
+                <Link
+                  to={`/workspaces/${w.id}`}
+                  className="text-decoration-none text-dark"
+                >
                   <div className="d-flex align-items-center gap-3 mb-2">
                     <div
                       style={{
@@ -128,8 +140,22 @@ function WorkspaceListPage() {
                       {w.memberships.length === 1 ? 'участник' : 'участников'}
                     </small>
                   )}
-                </div>
-              </Link>
+                </Link>
+
+                <button
+                  className="btn btn-sm btn-outline-danger position-absolute"
+                  style={{ top: 12, right: 12 }}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    deleteWorkspace(w);
+                  }}
+                  disabled={deletingId === w.id}
+                  title="Удалить пространство"
+                >
+                  {deletingId === w.id ? '...' : '🗑'}
+                </button>
+              </div>
             </div>
           ))}
         </div>
