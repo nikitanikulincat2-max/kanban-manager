@@ -1,24 +1,28 @@
 import ReactDOM from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
-import { ToastContainer } from 'react-toastify';
 import App from './App';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import 'react-toastify/dist/ReactToastify.css';
 import './index.css';
 
-registerSW({ immediate: true });
+registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    window.location.reload();
+  },
+  onOfflineReady() {
+    console.log('Приложение готово к офлайн-работе');
+  },
+});
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <>
-    <App />
-    <ToastContainer
-      position="top-right"
-      autoClose={3000}
-      hideProgressBar={false}
-      newestOnTop
-      closeOnClick
-      pauseOnHover
-      theme="light"
-    />
-  </>
-);
+if ('serviceWorker' in navigator) {
+  setInterval(
+    () => {
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((reg) => reg.update());
+      });
+    },
+    30 * 60 * 1000
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')!).render(<App />);
