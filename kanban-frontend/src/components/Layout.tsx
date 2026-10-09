@@ -74,10 +74,15 @@ function Layout() {
           {/* Правая часть */}
           <div className="d-flex align-items-center gap-2 ms-auto">
             {/* ПК-навигация */}
-            <ul className="navbar-nav flex-row gap-2 mb-0 kb-desktop-nav">
+           <ul className="navbar-nav flex-row gap-2 mb-0 kb-desktop-nav">
               <li className="nav-item">
                 <Link to="/workspaces" className={isActive('/workspaces')}>
                   Пространства
+                </Link>
+              </li>
+              <li className="nav-item">
+                <Link to="/tasks" className={isActive('/tasks')}>
+                  Задачи
                 </Link>
               </li>
               <li className="nav-item">
@@ -180,6 +185,9 @@ function Layout() {
             <div className="kb-mobile-drawer-body">
               <Link to="/workspaces" className="kb-mobile-drawer-item">
                 📋 <span>Пространства</span>
+              </Link>
+              <Link to="/tasks" className="kb-mobile-drawer-item">
+                ✅ <span>Задачи</span>
               </Link>
               <Link to="/dashboard" className="kb-mobile-drawer-item">
                 📊 <span>Дашборд</span>

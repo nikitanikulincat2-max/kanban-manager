@@ -80,6 +80,15 @@ function AnimatedRoutes() {
           />
 
           <Route
+            path="tasks"
+            element={
+              <PrivateRoute>
+                <AllTasksPage />
+              </PrivateRoute>
+            }
+          />
+
+          <Route
             path="tasks/:id"
             element={
               <PrivateRoute>
