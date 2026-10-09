@@ -2,17 +2,14 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
-import { toast } from 'react-toastify';
 import api from '../api/axiosConfig';
 import type { Board, Column, Task, Paginated } from '../types';
 import TaskModal from '../components/TaskModal';
 import { useWorkspaceRole } from '../hooks/useWorkspaceRole';
-import { useConfirm } from '../contexts/ConfirmContext';
 
 function BoardDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { confirm } = useConfirm();
 
   const [board, setBoard] = useState<Board | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
@@ -91,7 +88,6 @@ function BoardDetailPage() {
       setAllUsers(Array.from(usersSet.values()));
     } catch (err) {
       console.error('Ошибка загрузки доски:', err);
-      toast.error('Не удалось загрузить доску');
     } finally {
       setLoading(false);
     }
@@ -129,12 +125,11 @@ function BoardDetailPage() {
       });
     } catch (err) {
       console.error('Не удалось переместить задачу:', err);
-      toast.error('Не удалось переместить задачу');
       loadBoard();
     }
   };
 
-  // ─── Быстрое перемещение ─────────────────────
+  // ─── Быстрое перемещение задачи между колонками ─────
   const moveTaskToColumn = async (taskId: number, toColumnId: number) => {
     try {
       await api.post(`tasks/${taskId}/move/`, {
@@ -144,29 +139,25 @@ function BoardDetailPage() {
       loadBoard();
     } catch (err: any) {
       console.error('Ошибка перемещения:', err);
-      toast.error(err.response?.data?.detail || 'Не удалось переместить задачу');
+      alert(err.response?.data?.detail || 'Не удалось переместить задачу');
     }
   };
 
-  // ─── Быстрое удаление через кастомную модалку ─────
+  // ─── Быстрое удаление задачи ─────────────────────
   const deleteTask = async (taskId: number, title: string) => {
-    const ok = await confirm({
-      title: '🗑 Удаление задачи',
-      message: `Удалить задачу «${title}»?\n\nЭто действие нельзя отменить — все комментарии и файлы будут удалены.`,
-      confirmText: 'Удалить',
-      cancelText: 'Отмена',
-      variant: 'danger',
-    });
-
-    if (!ok) return;
-
+    if (
+      !window.confirm(
+        `Удалить задачу «${title}»?\n\nЭто действие нельзя отменить.`
+      )
+    ) {
+      return;
+    }
     try {
       await api.delete(`tasks/${taskId}/`);
-      toast.success('Задача удалена');
       loadBoard();
     } catch (err: any) {
       console.error('Ошибка удаления:', err);
-      toast.error(err.response?.data?.detail || 'Не удалось удалить задачу');
+      alert(err.response?.data?.detail || 'Не удалось удалить задачу');
     }
   };
 
@@ -201,11 +192,10 @@ function BoardDetailPage() {
       });
       setShowColumnModal(false);
       setNewColumnName('');
-      toast.success('Колонка создана');
       loadBoard();
     } catch (err: any) {
       console.error('Ошибка создания колонки:', err);
-      toast.error(err.response?.data?.detail || 'Не удалось создать колонку');
+      alert(err.response?.data?.detail || 'Не удалось создать колонку');
     }
   };
 
@@ -231,7 +221,7 @@ function BoardDetailPage() {
 
   return (
     <div>
-      {/* ─── Заголовок ─── */}
+      {/* ─── Заголовок доски ─── */}
       <div className="kb-board-header kb-fade-in">
         <div>
           <h2 className="mb-0">{board.name}</h2>
@@ -279,7 +269,7 @@ function BoardDetailPage() {
         <span style={{ float: 'right' }}>{showFilters ? '▲' : '▼'}</span>
       </button>
 
-      {/* ─── Фильтры ─── */}
+      {/* ─── Панель фильтров (сворачивается на мобилке) ─── */}
       <div className={`kb-filters-panel ${showFilters ? 'is-open' : ''}`}>
         <div className="card mb-4 kb-slide-up">
           <div className="card-body">
@@ -349,11 +339,35 @@ function BoardDetailPage() {
                 </button>
               </div>
             </div>
+
+            {hasActiveFilters && (
+              <div className="mt-2 small text-muted kb-fade-in">
+                Активны фильтры:
+                {search && (
+                  <span className="badge bg-info ms-1">поиск: {search}</span>
+                )}
+                {priorityFilter && (
+                  <span className="badge bg-info ms-1">
+                    приоритет: {priorityFilter}
+                  </span>
+                )}
+                {assigneeFilter && (
+                  <span className="badge bg-info ms-1">
+                    исполнитель: {assigneeFilter}
+                  </span>
+                )}
+                {sortBy !== 'order' && (
+                  <span className="badge bg-info ms-1">
+                    сортировка: {sortBy}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* ─── Подсказка мобильная ─── */}
+      {/* ─── Мобильная подсказка про скролл ─── */}
       <div className="kb-mobile-hint">
         👈 Проведите, чтобы увидеть все колонки 👉
       </div>
