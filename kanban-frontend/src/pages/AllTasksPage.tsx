@@ -24,9 +24,7 @@ function AllTasksPage() {
   // Мобильное сворачивание фильтров
   const [showFilters, setShowFilters] = useState(false);
 
-  // Для контекста — какие доски/пространства/исполнители существуют
-  const [columns, setColumns] = useState<Column[]>([]);
-  const [boards, setBoards] = useState<Board[]>([]);
+  // Только эти данные нужны для JSX (селект «Пространство»)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [allUsers, setAllUsers] = useState<{ id: number; username: string }[]>([]);
 
@@ -39,13 +37,13 @@ function AllTasksPage() {
     try {
       setLoading(true);
 
-      // Параллельно загружаем всё нужное
       const params = new URLSearchParams();
       if (search) params.append('search', search);
       if (priorityFilter) params.append('priority', priorityFilter);
       if (assigneeFilter) params.append('assignee', assigneeFilter);
       if (sortBy) params.append('ordering', sortBy);
 
+      // Загружаем всё параллельно
       const [tRes, cRes, bRes, wRes] = await Promise.all([
         api.get<Paginated<Task> | Task[]>(`tasks/?${params.toString()}`),
         api.get<Paginated<Column> | Column[]>('columns/'),
@@ -58,11 +56,10 @@ function AllTasksPage() {
       const boardsList = Array.isArray(bRes.data) ? bRes.data : bRes.data.results;
       const wsList = Array.isArray(wRes.data) ? wRes.data : wRes.data.results;
 
-      setColumns(columnsList);
-      setBoards(boardsList);
+      // В state сохраняем только то, что нужно JSX
       setWorkspaces(wsList);
 
-      // Обогащаем задачи контекстом
+      // Обогащаем задачи — используем локальные columnsList и boardsList
       const enriched: TaskWithContext[] = tasksList.map((t) => {
         const col = columnsList.find((c) => c.id === t.column);
         const board = col ? boardsList.find((b) => b.id === col.board) : null;
@@ -76,7 +73,7 @@ function AllTasksPage() {
         };
       });
 
-      // Фильтр по пространству на клиенте (после обогащения)
+      // Фильтр по пространству — на клиенте
       const filteredByWorkspace =
         workspaceFilter === 'all'
           ? enriched
