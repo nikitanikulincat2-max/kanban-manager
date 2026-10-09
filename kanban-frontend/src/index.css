@@ -1,7 +1,3 @@
-/* ============================================================
-   KanBan — глобальные стили и анимации
-   ============================================================ */
-
 :root {
   --kb-primary: #6366f1;
   --kb-primary-dark: #4f46e5;
@@ -51,7 +47,6 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* Анимированный градиент: тёплый жёлтый → холодный голубой → лаванда → снова жёлтый */
  background: linear-gradient(
   -45deg,
   #f7f5a3 0%,
@@ -66,10 +61,6 @@ body {
   animation: kb-bg-flow 25s ease infinite;
   min-height: 100vh;
 }
-
-/* ============================================================
-   KEYFRAMES
-   ============================================================ */
 
 @keyframes kb-fadeIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -180,10 +171,6 @@ body {
   100% { transform: scale(1) rotate(0deg); }
 }
 
-/* ============================================================
-   UTILITY КЛАССЫ АНИМАЦИЙ
-   ============================================================ */
-
 .kb-fade-in        { animation: kb-fadeIn 0.35s ease-out both; }
 .kb-slide-up       { animation: kb-slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .kb-slide-down     { animation: kb-slideDown 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
@@ -191,24 +178,15 @@ body {
 .kb-slide-in-right { animation: kb-slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .kb-scale-in       { animation: kb-scaleIn 0.3s ease-out both; }
 .kb-scale-in-pop   { animation: kb-scaleInPop 0.35s cubic-bezier(0.16, 1, 0.3, 1) both; }
-
 .kb-delay-1 { animation-delay: 0.05s; }
 .kb-delay-2 { animation-delay: 0.1s; }
 .kb-delay-3 { animation-delay: 0.15s; }
 .kb-delay-4 { animation-delay: 0.2s; }
 .kb-delay-5 { animation-delay: 0.25s; }
 
-/* ============================================================
-   ROUTE TRANSITIONS — плавная смена страниц
-   ============================================================ */
-
 .kb-route-wrapper {
   animation: kb-fadeIn 0.35s ease-out both;
 }
-
-/* ============================================================
-   NAVBAR
-   ============================================================ */
 
 .kb-navbar {
   background: var(--kb-gradient);
@@ -303,10 +281,6 @@ body {
   border-color: white;
 }
 
-/* ============================================================
-   КНОПКИ
-   ============================================================ */
-
 .btn {
   border-radius: var(--kb-radius-sm);
   font-weight: 500;
@@ -346,10 +320,6 @@ body {
   color: white !important;
 }
 
-/* ============================================================
-   КАРТОЧКИ
-   ============================================================ */
-
 .kb-card {
   background: var(--kb-bg-card);
   border-radius: var(--kb-radius);
@@ -364,7 +334,6 @@ body {
   border-color: var(--kb-primary-light);
 }
 
-/* Красивая полоса прокрутки в истории */
 .kb-card ::-webkit-scrollbar {
   width: 6px;
 }
@@ -382,10 +351,6 @@ body {
   background: var(--kb-primary-light);
 }
 
-/* ============================================================
-   КАНБАН-КОЛОНКИ
-   ============================================================ */
-
 .kb-column {
   background: var(--kb-bg-card);
   border-radius: var(--kb-radius);
@@ -400,7 +365,6 @@ body {
   box-shadow: var(--kb-shadow-md);
 }
 
-/* Подсветка колонки при перетаскивании */
 .kb-column.is-dragging-over {
   box-shadow: var(--kb-shadow-lg);
   transform: scale(1.01);
@@ -433,10 +397,6 @@ body {
   background-color: rgba(99, 102, 241, 0.06);
 }
 
-/* ============================================================
-   КАРТОЧКИ ЗАДАЧ
-   ============================================================ */
-
 .kb-task-card {
   background: white;
   border-radius: var(--kb-radius-sm);
@@ -461,7 +421,6 @@ body {
   cursor: grabbing;
 }
 
-/* Состояние при перетаскивании */
 .kb-task-card.is-dragging {
   transform: rotate(2deg) scale(1.02);
   box-shadow: var(--kb-shadow-drag);
@@ -509,10 +468,6 @@ body {
   width: 100%;
 }
 
-/* ============================================================
-   ФОРМЫ
-   ============================================================ */
-
 .form-control,
 .form-select {
   border-radius: var(--kb-radius-sm) !important;
@@ -527,10 +482,6 @@ body {
   transform: translateY(-1px);
 }
 
-/* ============================================================
-   БЕЙДЖИ
-   ============================================================ */
-
 .badge {
   font-weight: 500;
   padding: 0.35em 0.7em;
@@ -541,10 +492,6 @@ body {
 .badge:hover {
   transform: scale(1.05);
 }
-
-/* ============================================================
-   МОДАЛЬНЫЕ ОКНА
-   ============================================================ */
 
 .kb-modal-backdrop {
   position: fixed;
@@ -596,7 +543,6 @@ body {
   gap: 8px;
 }
 
-/* Bootstrap модалки тоже анимируем */
 .modal-content {
   border-radius: var(--kb-radius-lg) !important;
   border: none !important;
@@ -608,17 +554,9 @@ body {
   animation: kb-backdrop-in 0.25s ease-out;
 }
 
-/* ============================================================
-   PAGE TRANSITIONS
-   ============================================================ */
-
 .page-enter {
   animation: kb-fadeIn 0.35s ease-out;
 }
-
-/* ============================================================
-   ЗАГРУЗКА
-   ============================================================ */
 
 .kb-loading {
   display: flex;
@@ -639,7 +577,6 @@ body {
   animation: kb-spin-slow 0.8s linear infinite;
 }
 
-/* Skeleton-загрузка карточек */
 .kb-skeleton {
   background: linear-gradient(
     90deg,
@@ -651,10 +588,6 @@ body {
   animation: kb-shimmer 1.5s ease-in-out infinite;
   border-radius: var(--kb-radius-sm);
 }
-
-/* ============================================================
-   АВТОРИЗАЦИЯ
-   ============================================================ */
 
 .kb-auth-container {
   min-height: 100vh;
@@ -689,10 +622,6 @@ body {
   letter-spacing: -0.03em;
 }
 
-/* ============================================================
-   ССЫЛКИ И ФУТЕР
-   ============================================================ */
-
 a {
   color: var(--kb-primary);
   text-decoration: none;
@@ -709,10 +638,6 @@ a:hover {
   color: var(--kb-text-muted);
 }
 
-/* ============================================================
-   TOAST-УВЕДОМЛЕНИЯ
-   ============================================================ */
-
 .Toastify__toast {
   border-radius: var(--kb-radius) !important;
   font-family: 'Inter', sans-serif !important;
@@ -721,10 +646,6 @@ a:hover {
 .Toastify__toast--success { background: var(--kb-success) !important; }
 .Toastify__toast--error   { background: var(--kb-danger) !important; }
 .Toastify__toast--info    { background: var(--kb-primary) !important; }
-
-/* ============================================================
-   HOVER-ЭФФЕКТЫ НА КНОПКАХ СО СПИСКАМИ
-   ============================================================ */
 
 .kb-hover-lift {
   transition: transform var(--kb-transition-base), box-shadow var(--kb-transition-base);
@@ -735,10 +656,6 @@ a:hover {
   box-shadow: var(--kb-shadow-lg);
 }
 
-/* ============================================================
-   АНИМАЦИЯ СПИСКА УЧАСТНИКОВ
-   ============================================================ */
-
 .kb-member-row {
   animation: kb-slideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
   transition: background-color var(--kb-transition-fast);
@@ -746,4 +663,80 @@ a:hover {
 
 .kb-member-row:hover {
   background-color: rgba(99, 102, 241, 0.04);
+}
+
+.kb-task-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--kb-border);
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity var(--kb-transition-base),
+              max-height var(--kb-transition-base),
+              padding-top var(--kb-transition-base),
+              margin-top var(--kb-transition-base);
+}
+
+.kb-task-card:hover .kb-task-actions {
+  opacity: 1;
+  max-height: 80px;
+}
+
+.kb-task-action-btn {
+  font-size: 0.72rem;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--kb-border);
+  background: white;
+  cursor: pointer;
+  transition: all var(--kb-transition-fast);
+  color: var(--kb-text);
+  font-weight: 500;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.kb-task-action-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--kb-shadow-sm);
+}
+
+.kb-task-action-btn:active {
+  transform: translateY(0);
+}
+
+.kb-task-action-forward:hover {
+  background: var(--kb-success);
+  border-color: var(--kb-success);
+  color: white;
+}
+
+.kb-task-action-back:hover {
+  background: var(--kb-warning);
+  border-color: var(--kb-warning);
+  color: white;
+}
+
+.kb-task-action-delete {
+  margin-left: auto;
+  font-size: 0.9rem;
+  padding: 3px 8px;
+}
+
+.kb-task-action-delete:hover {
+  background: var(--kb-danger);
+  border-color: var(--kb-danger);
+  color: white;
+}
+
+@media (max-width: 768px) {
+  .kb-task-actions {
+    opacity: 1;
+    max-height: 80px;
+  }
 }
