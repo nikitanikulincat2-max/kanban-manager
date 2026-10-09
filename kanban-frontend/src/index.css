@@ -740,3 +740,390 @@ a:hover {
     max-height: 80px;
   }
 }
+
+/* ============================================================
+   АДАПТАЦИЯ ПОД МОБИЛЬНЫЕ УСТРОЙСТВА
+   ============================================================ */
+
+/* Убираем горизонтальный скролл на мобилке */
+html, body {
+  overflow-x: hidden;
+}
+
+/* Запрещаем зум по двойному тапу на мобильных */
+@media (max-width: 768px) {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Большие тач-кнопки */
+  .btn,
+  .form-control,
+  .form-select {
+    min-height: 44px;
+    font-size: 16px; /* чтобы iOS не зумил при фокусе */
+  }
+
+  .btn-sm {
+    min-height: 36px;
+    font-size: 14px;
+  }
+
+  /* Navbar компактнее */
+  .kb-navbar .container {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  /* Логотип меньше */
+  .kb-logo {
+    font-size: 1.15rem;
+    gap: 8px;
+  }
+
+  .kb-logo-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* Аватар меньше */
+  .kb-avatar {
+    width: 28px;
+    height: 28px;
+    font-size: 0.75rem;
+  }
+
+  /* Модалки на весь экран */
+  .kb-modal-content {
+    max-width: 100% !important;
+    max-height: 100vh;
+    border-radius: 0 !important;
+    animation: kb-slideUpMobile 0.3s ease-out;
+  }
+
+  .kb-modal-backdrop {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  /* Форма задачи на мобилке */
+  .kb-modal-header,
+  .kb-modal-body,
+  .kb-modal-footer {
+    padding: 16px;
+  }
+
+  /* Заголовки уменьшены */
+  h1 { font-size: 1.5rem; }
+  h2 { font-size: 1.35rem; }
+  h3 { font-size: 1.2rem; }
+  h4 { font-size: 1.1rem; }
+  h5 { font-size: 1rem; }
+
+  /* Карточки пространств — на всю ширину */
+  .kb-card {
+    border-radius: 10px;
+  }
+
+  /* Уменьшаем отступы */
+  .container {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .my-4 {
+    margin-top: 1rem !important;
+    margin-bottom: 1rem !important;
+  }
+}
+
+/* Очень узкие экраны */
+@media (max-width: 480px) {
+  .kb-auth-card {
+    padding: 24px;
+    border-radius: 0;
+    max-width: 100%;
+  }
+
+  .kb-auth-container {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .kb-auth-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 100vh;
+  }
+}
+
+/* Анимация модалки снизу вверх (Android-native style) */
+@keyframes kb-slideUpMobile {
+  from {
+    transform: translateY(100%);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ============================================================
+   МОБИЛЬНАЯ НАВИГАЦИЯ
+   ============================================================ */
+
+.kb-mobile-menu-btn {
+  display: none;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: white;
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--kb-transition-fast);
+}
+
+.kb-mobile-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.kb-mobile-menu-btn:active {
+  transform: scale(0.95);
+}
+
+@media (max-width: 768px) {
+  .kb-desktop-nav {
+    display: none !important;
+  }
+
+  .kb-mobile-menu-btn {
+    display: flex;
+  }
+}
+
+/* ============================================================
+   МОБИЛЬНОЕ МЕНЮ-ШТОРКА
+   ============================================================ */
+
+.kb-mobile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1049;
+  animation: kb-backdrop-in 0.2s ease-out;
+}
+
+.kb-mobile-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 280px;
+  max-width: 80vw;
+  height: 100%;
+  background: white;
+  z-index: 1050;
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  animation: kb-slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.kb-mobile-drawer-header {
+  padding: 20px;
+  background: var(--kb-gradient);
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.kb-mobile-drawer-body {
+  flex: 1;
+  padding: 12px 0;
+  overflow-y: auto;
+}
+
+.kb-mobile-drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  color: var(--kb-text);
+  text-decoration: none;
+  font-weight: 500;
+  transition: background var(--kb-transition-fast);
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.kb-mobile-drawer-item:hover,
+.kb-mobile-drawer-item.active {
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--kb-primary);
+}
+
+.kb-mobile-drawer-item.danger {
+  color: var(--kb-danger);
+}
+
+.kb-mobile-drawer-item.danger:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.kb-board-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+  margin: 0 -12px;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+/* Скрыть скроллбар на мобилке */
+.kb-board-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.kb-board-scroll::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border-radius: 3px;
+}
+
+.kb-board-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kb-board-column-wrapper {
+  flex: 0 0 auto;
+  width: 320px;
+  scroll-snap-align: start;
+}
+
+@media (min-width: 769px) {
+  .kb-board-scroll {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    overflow-x: visible;
+    margin: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .kb-board-column-wrapper {
+    width: auto;
+  }
+}
+
+.kb-mobile-hint {
+  display: none;
+  text-align: center;
+  color: var(--kb-text-muted);
+  font-size: 0.85rem;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 768px) {
+  .kb-mobile-hint {
+    display: block;
+  }
+}
+
+.kb-filters-toggle {
+  display: none;
+  width: 100%;
+  padding: 12px;
+  background: white;
+  border: 1px solid var(--kb-border);
+  border-radius: var(--kb-radius-sm);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--kb-transition-fast);
+  margin-bottom: 12px;
+}
+
+.kb-filters-toggle:hover {
+  border-color: var(--kb-primary);
+  background: rgba(99, 102, 241, 0.03);
+}
+
+.kb-filters-panel {
+  transition: max-height var(--kb-transition-base), opacity var(--kb-transition-base);
+}
+
+@media (max-width: 768px) {
+  .kb-filters-toggle {
+    display: block;
+  }
+
+  .kb-filters-panel {
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+  }
+
+  .kb-filters-panel.is-open {
+    max-height: 600px;
+    opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .kb-task-actions {
+    opacity: 1 !important;
+    max-height: 120px !important;
+  }
+
+  .kb-task-action-btn {
+    min-height: 36px;
+    font-size: 0.8rem;
+    padding: 6px 12px;
+  }
+
+  .kb-task-actions {
+    flex-wrap: wrap;
+  }
+
+  .kb-task-action-forward,
+  .kb-task-action-back {
+    flex: 1;
+  }
+}
+
+.kb-board-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+  .kb-board-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .kb-board-header h2 {
+    margin-bottom: 8px;
+  }
+
+  .kb-board-header .d-flex {
+    width: 100%;
+  }
+}

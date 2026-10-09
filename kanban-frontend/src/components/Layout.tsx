@@ -8,9 +8,10 @@ function Layout() {
   const location = useLocation();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const dropdownRef = useRef<HTMLLIElement>(null);
 
-  // Закрываем меню при клике вне
+  // Закрытие dropdown по клику вне
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -24,13 +25,27 @@ function Layout() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Закрываем меню при смене страницы
+  // Закрытие меню при смене страницы
   useEffect(() => {
     setDropdownOpen(false);
+    setDrawerOpen(false);
   }, [location.pathname]);
+
+  // Блокируем скролл body, когда меню открыто
+  useEffect(() => {
+    if (drawerOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [drawerOpen]);
 
   const handleLogout = () => {
     setDropdownOpen(false);
+    setDrawerOpen(false);
     logout();
     navigate('/login');
   };
@@ -56,17 +71,13 @@ function Layout() {
             <span>KanBan</span>
           </Link>
 
-          <div className="d-flex align-items-center gap-3 ms-auto">
-            {/* Основные ссылки */}
-            <ul className="navbar-nav flex-row gap-2 mb-0">
+          {/* Правая часть */}
+          <div className="d-flex align-items-center gap-2 ms-auto">
+            {/* ПК-навигация */}
+            <ul className="navbar-nav flex-row gap-2 mb-0 kb-desktop-nav">
               <li className="nav-item">
                 <Link to="/workspaces" className={isActive('/workspaces')}>
                   Пространства
-                </Link>
-              </li>
-              <li className="nav-item">
-                <Link to="/tasks" className={isActive('/tasks')}>
-                  Задачи
                 </Link>
               </li>
               <li className="nav-item">
@@ -76,15 +87,14 @@ function Layout() {
               </li>
             </ul>
 
-            {/* Dropdown пользователя */}
-            <ul className="navbar-nav mb-0">
+            {/* ПК-профиль */}
+            <ul className="navbar-nav mb-0 kb-desktop-nav">
               <li className="nav-item position-relative" ref={dropdownRef}>
                 <button
                   type="button"
                   className="btn btn-link nav-link dropdown-toggle text-decoration-none d-flex align-items-center gap-2"
                   style={{ color: 'white' }}
                   onClick={() => setDropdownOpen(!dropdownOpen)}
-                  aria-expanded={dropdownOpen}
                 >
                   <span className="kb-avatar">
                     {user?.username?.[0]?.toUpperCase() || '?'}
@@ -100,7 +110,7 @@ function Layout() {
                       right: 0,
                       top: '100%',
                       marginTop: 6,
-                      minWidth: 200,
+                      minWidth: 180,
                       zIndex: 1050,
                       boxShadow: 'var(--kb-shadow-lg)',
                       border: 'none',
@@ -113,23 +123,6 @@ function Layout() {
                         👤 Профиль
                       </Link>
                     </li>
-                    {user?.is_superuser && (
-                      <>
-                        <li>
-                          <hr className="dropdown-divider" />
-                        </li>
-                        <li>
-                          <a
-                            href="http://localhost:8000/admin/"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="dropdown-item"
-                          >
-                            ⚙️ Django Admin
-                          </a>
-                        </li>
-                      </>
-                    )}
                     <li>
                       <hr className="dropdown-divider" />
                     </li>
@@ -145,9 +138,66 @@ function Layout() {
                 )}
               </li>
             </ul>
+
+            {/* Мобильная кнопка-гамбургер */}
+            <button
+              className="kb-mobile-menu-btn"
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Открыть меню"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
           </div>
         </div>
       </nav>
+
+      {/* Мобильное меню-шторка */}
+      {drawerOpen && (
+        <>
+          <div
+            className="kb-mobile-drawer-backdrop"
+            onClick={() => setDrawerOpen(false)}
+          />
+          <aside className="kb-mobile-drawer">
+            <div className="kb-mobile-drawer-header">
+              <span className="kb-avatar" style={{ width: 44, height: 44, fontSize: 18 }}>
+                {user?.username?.[0]?.toUpperCase() || '?'}
+              </span>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '1.05rem' }}>
+                  {user?.username}
+                </div>
+                <div style={{ opacity: 0.8, fontSize: '0.85rem' }}>
+                  вошёл в KanBan
+                </div>
+              </div>
+            </div>
+
+            <div className="kb-mobile-drawer-body">
+              <Link to="/workspaces" className="kb-mobile-drawer-item">
+                📋 <span>Пространства</span>
+              </Link>
+              <Link to="/dashboard" className="kb-mobile-drawer-item">
+                📊 <span>Дашборд</span>
+              </Link>
+              <Link to="/profile" className="kb-mobile-drawer-item">
+                👤 <span>Профиль</span>
+              </Link>
+              <hr style={{ margin: '8px 20px', borderColor: 'var(--kb-border)' }} />
+              <button
+                className="kb-mobile-drawer-item danger"
+                onClick={handleLogout}
+              >
+                🚪 <span>Выйти</span>
+              </button>
+            </div>
+          </aside>
+        </>
+      )}
 
       <main className="container my-4 flex-grow-1 page-enter">
         <Outlet />

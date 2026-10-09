@@ -18,13 +18,18 @@ function BoardDetailPage() {
 
   const { isManager } = useWorkspaceRole(board?.workspace || null);
 
+  // Фильтры
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [sortBy, setSortBy] = useState('order');
 
+  // Мобильное сворачивание фильтров
+  const [showFilters, setShowFilters] = useState(false);
+
   const [allUsers, setAllUsers] = useState<{ id: number; username: string }[]>([]);
 
+  // Модалки
   const [showModal, setShowModal] = useState(false);
   const [selectedColumnId, setSelectedColumnId] = useState<number | null>(null);
 
@@ -140,7 +145,11 @@ function BoardDetailPage() {
 
   // ─── Быстрое удаление задачи ─────────────────────
   const deleteTask = async (taskId: number, title: string) => {
-    if (!window.confirm(`Удалить задачу «${title}»?\n\nЭто действие нельзя отменить.`)) {
+    if (
+      !window.confirm(
+        `Удалить задачу «${title}»?\n\nЭто действие нельзя отменить.`
+      )
+    ) {
       return;
     }
     try {
@@ -191,7 +200,10 @@ function BoardDetailPage() {
   };
 
   const hasActiveFilters =
-    search !== '' || priorityFilter !== '' || assigneeFilter !== '' || sortBy !== 'order';
+    search !== '' ||
+    priorityFilter !== '' ||
+    assigneeFilter !== '' ||
+    sortBy !== 'order';
 
   if (loading && !board) {
     return (
@@ -202,13 +214,15 @@ function BoardDetailPage() {
   }
 
   if (!board) {
-    return <div className="alert alert-danger mt-5">Доска не найдена</div>;
+    return (
+      <div className="alert alert-danger mt-5">Доска не найдена</div>
+    );
   }
 
   return (
     <div>
-      {/* Заголовок */}
-      <div className="d-flex justify-content-between align-items-center mb-3 kb-fade-in">
+      {/* ─── Заголовок доски ─── */}
+      <div className="kb-board-header kb-fade-in">
         <div>
           <h2 className="mb-0">{board.name}</h2>
           {board.description && (
@@ -233,113 +247,153 @@ function BoardDetailPage() {
         </div>
       </div>
 
-      {/* Панель фильтров */}
-      <div className="card mb-4 kb-slide-up">
-        <div className="card-body">
-          <div className="row g-2 align-items-end">
-            <div className="col-md-4">
-              <label className="form-label small mb-1">Поиск</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="Поиск по названию или описанию..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+      {/* ─── Мобильная кнопка фильтров ─── */}
+      <button
+        className="kb-filters-toggle"
+        onClick={() => setShowFilters(!showFilters)}
+      >
+        🔍 Фильтры
+        {hasActiveFilters && (
+          <span
+            style={{
+              display: 'inline-block',
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: 'var(--kb-danger)',
+              marginLeft: 6,
+              verticalAlign: 'middle',
+            }}
+          ></span>
+        )}
+        <span style={{ float: 'right' }}>{showFilters ? '▲' : '▼'}</span>
+      </button>
+
+      {/* ─── Панель фильтров (сворачивается на мобилке) ─── */}
+      <div className={`kb-filters-panel ${showFilters ? 'is-open' : ''}`}>
+        <div className="card mb-4 kb-slide-up">
+          <div className="card-body">
+            <div className="row g-2 align-items-end">
+              <div className="col-md-4">
+                <label className="form-label small mb-1">Поиск</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder="Поиск по названию или описанию..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="col-md-2">
+                <label className="form-label small mb-1">Приоритет</label>
+                <select
+                  className="form-select"
+                  value={priorityFilter}
+                  onChange={(e) => setPriorityFilter(e.target.value)}
+                >
+                  <option value="">Все</option>
+                  <option value="high">Высокий</option>
+                  <option value="medium">Средний</option>
+                  <option value="low">Низкий</option>
+                </select>
+              </div>
+
+              <div className="col-md-2">
+                <label className="form-label small mb-1">Исполнитель</label>
+                <select
+                  className="form-select"
+                  value={assigneeFilter}
+                  onChange={(e) => setAssigneeFilter(e.target.value)}
+                >
+                  <option value="">Все</option>
+                  {allUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.username}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="col-md-2">
+                <label className="form-label small mb-1">Сортировка</label>
+                <select
+                  className="form-select"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                >
+                  <option value="order">По порядку</option>
+                  <option value="due_date">По сроку</option>
+                  <option value="-created_at">Сначала новые</option>
+                  <option value="priority">По приоритету</option>
+                </select>
+              </div>
+
+              <div className="col-md-2">
+                <button
+                  className="btn btn-outline-secondary w-100"
+                  onClick={resetFilters}
+                  disabled={!hasActiveFilters}
+                >
+                  Сбросить
+                </button>
+              </div>
             </div>
 
-            <div className="col-md-2">
-              <label className="form-label small mb-1">Приоритет</label>
-              <select
-                className="form-select"
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-              >
-                <option value="">Все</option>
-                <option value="high">Высокий</option>
-                <option value="medium">Средний</option>
-                <option value="low">Низкий</option>
-              </select>
-            </div>
-
-            <div className="col-md-2">
-              <label className="form-label small mb-1">Исполнитель</label>
-              <select
-                className="form-select"
-                value={assigneeFilter}
-                onChange={(e) => setAssigneeFilter(e.target.value)}
-              >
-                <option value="">Все</option>
-                {allUsers.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.username}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="col-md-2">
-              <label className="form-label small mb-1">Сортировка</label>
-              <select
-                className="form-select"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-              >
-                <option value="order">По порядку</option>
-                <option value="due_date">По сроку</option>
-                <option value="-created_at">Сначала новые</option>
-                <option value="priority">По приоритету</option>
-              </select>
-            </div>
-
-            <div className="col-md-2">
-              <button
-                className="btn btn-outline-secondary w-100"
-                onClick={resetFilters}
-                disabled={!hasActiveFilters}
-              >
-                Сбросить
-              </button>
-            </div>
+            {hasActiveFilters && (
+              <div className="mt-2 small text-muted kb-fade-in">
+                Активны фильтры:
+                {search && (
+                  <span className="badge bg-info ms-1">поиск: {search}</span>
+                )}
+                {priorityFilter && (
+                  <span className="badge bg-info ms-1">
+                    приоритет: {priorityFilter}
+                  </span>
+                )}
+                {assigneeFilter && (
+                  <span className="badge bg-info ms-1">
+                    исполнитель: {assigneeFilter}
+                  </span>
+                )}
+                {sortBy !== 'order' && (
+                  <span className="badge bg-info ms-1">
+                    сортировка: {sortBy}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
-
-          {hasActiveFilters && (
-            <div className="mt-2 small text-muted kb-fade-in">
-              Активны фильтры:
-              {search && <span className="badge bg-info ms-1">поиск: {search}</span>}
-              {priorityFilter && (
-                <span className="badge bg-info ms-1">приоритет: {priorityFilter}</span>
-              )}
-              {assigneeFilter && (
-                <span className="badge bg-info ms-1">исполнитель: {assigneeFilter}</span>
-              )}
-              {sortBy !== 'order' && (
-                <span className="badge bg-info ms-1">сортировка: {sortBy}</span>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Канбан-доска */}
+      {/* ─── Мобильная подсказка про скролл ─── */}
+      <div className="kb-mobile-hint">
+        👈 Проведите, чтобы увидеть все колонки 👉
+      </div>
+
+      {/* ─── Канбан-доска ─── */}
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className="row">
+        <div className="kb-board-scroll">
           {columns.map((col, colIdx) => {
             const columnTasks = tasks[col.id] || [];
             const prevColumn = colIdx > 0 ? columns[colIdx - 1] : null;
-            const nextColumn = colIdx < columns.length - 1 ? columns[colIdx + 1] : null;
+            const nextColumn =
+              colIdx < columns.length - 1 ? columns[colIdx + 1] : null;
 
             return (
               <div
                 key={col.id}
-                className="col-md-4 mb-3"
+                className="kb-board-column-wrapper kb-slide-up"
                 style={{ animationDelay: `${colIdx * 0.1}s` }}
               >
                 <div className="kb-column">
                   <div className="kb-column-header d-flex justify-content-between align-items-center">
                     <span className="fw-bold">{col.name}</span>
                     <div className="d-flex align-items-center gap-2">
-                      <span className="kb-column-count">{columnTasks.length}</span>
+                      <span className="kb-column-count">
+                        {columnTasks.length}
+                      </span>
                       <button
                         className="btn btn-sm btn-outline-primary"
                         onClick={() => openCreateModal(col.id)}
@@ -359,13 +413,14 @@ function BoardDetailPage() {
                         ref={provided.innerRef}
                         {...provided.droppableProps}
                       >
-                        {columnTasks.length === 0 && !snapshot.isDraggingOver && (
-                          <p className="text-muted small text-center mb-0 py-4">
-                            {hasActiveFilters
-                              ? 'Ничего не найдено'
-                              : 'Нет задач — перетащите сюда'}
-                          </p>
-                        )}
+                        {columnTasks.length === 0 &&
+                          !snapshot.isDraggingOver && (
+                            <p className="text-muted small text-center mb-0 py-4">
+                              {hasActiveFilters
+                                ? 'Ничего не найдено'
+                                : 'Нет задач — перетащите сюда'}
+                            </p>
+                          )}
 
                         {columnTasks.map((task, index) => (
                           <Draggable
@@ -378,9 +433,9 @@ function BoardDetailPage() {
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                                 {...provided.dragHandleProps}
-                                className={`kb-task-card kb-task-priority-${task.priority} ${
-                                  snapshot.isDragging ? 'is-dragging' : ''
-                                }`}
+                                className={`kb-task-card kb-task-priority-${
+                                  task.priority
+                                } ${snapshot.isDragging ? 'is-dragging' : ''}`}
                                 style={provided.draggableProps.style}
                               >
                                 <div className="d-flex justify-content-between align-items-start">
@@ -424,7 +479,8 @@ function BoardDetailPage() {
 
                                 <div className="d-flex justify-content-between align-items-center small">
                                   <span className="text-muted">
-                                    {task.assignee?.username || 'Без исполнителя'}
+                                    {task.assignee?.username ||
+                                      'Без исполнителя'}
                                   </span>
                                   {task.due_date && (
                                     <span
@@ -445,14 +501,17 @@ function BoardDetailPage() {
                                   </div>
                                 )}
 
-                                {/* ─── БЫСТРЫЕ ДЕЙСТВИЯ ─── */}
+                                {/* ─── Быстрые действия ─── */}
                                 <div className="kb-task-actions">
                                   {prevColumn && (
                                     <button
                                       className="kb-task-action-btn kb-task-action-back"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        moveTaskToColumn(task.id, prevColumn.id);
+                                        moveTaskToColumn(
+                                          task.id,
+                                          prevColumn.id
+                                        );
                                       }}
                                       title={`Вернуть в «${prevColumn.name}»`}
                                     >
@@ -465,7 +524,10 @@ function BoardDetailPage() {
                                       className="kb-task-action-btn kb-task-action-forward"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        moveTaskToColumn(task.id, nextColumn.id);
+                                        moveTaskToColumn(
+                                          task.id,
+                                          nextColumn.id
+                                        );
                                       }}
                                       title={`Переместить в «${nextColumn.name}»`}
                                     >
@@ -499,7 +561,8 @@ function BoardDetailPage() {
         </div>
       </DragDropContext>
 
-      {selectedColumnId !== null && (
+      {/* ─── Модалка создания задачи ─── */}
+      {selectedColumnId !== null && board && (
         <TaskModal
           show={showModal}
           onHide={() => setShowModal(false)}
@@ -512,7 +575,7 @@ function BoardDetailPage() {
         />
       )}
 
-      {/* Модалка создания колонки */}
+      {/* ─── Модалка создания колонки ─── */}
       {isManager && showColumnModal && (
         <div
           className="kb-modal-backdrop"
