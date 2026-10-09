@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import type { FormEvent} from 'react';
+import type { FormEvent } from 'react';
 import api from '../api/axiosConfig';
-import type { Task, Comment, TaskHistory, Workspace, WorkspaceMembership } from '../types';
+import type {
+  Task,
+  Comment,
+  TaskHistory,
+  Workspace,
+  WorkspaceMembership,
+} from '../types';
 
 interface TaskFull extends Task {
   comments: Comment[];
@@ -35,28 +41,32 @@ function TaskDetailPage() {
   const [editAssigneeId, setEditAssigneeId] = useState<number | ''>('');
   const [editError, setEditError] = useState('');
 
-  // Участники пространства для выбора исполнителя
+  // Участники пространства (для выбора исполнителя)
   const [members, setMembers] = useState<WorkspaceMembership[]>([]);
 
   useEffect(() => {
     loadTask();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadTask = async () => {
     try {
       setLoading(true);
+      setError('');
+
       const res = await api.get<TaskFull>(`tasks/${id}/`);
       setTask(res.data);
 
-      // Загружаем участников пространства (для выбора исполнителя)
-      const columnId = res.data.column;
-      if (columnId) {
-        const columnRes = await api.get(`columns/${columnId}/`);
-        const boardId = columnRes.data.board;
-        const boardRes = await api.get(`boards/${boardId}/`);
-        const workspaceId = boardRes.data.workspace;
-        const wsRes = await api.get<Workspace>(`workspaces/${workspaceId}/`);
+      // Подгружаем участников пространства через цепочку column → board → workspace
+      try {
+        const columnRes = await api.get(`columns/${res.data.column}/`);
+        const boardRes = await api.get(`boards/${columnRes.data.board}/`);
+        const wsRes = await api.get<Workspace>(
+          `workspaces/${boardRes.data.workspace}/`
+        );
         setMembers(wsRes.data.memberships || []);
+      } catch {
+        setMembers([]);
       }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Задача не найдена');
@@ -95,19 +105,17 @@ function TaskDetailPage() {
       setShowEditModal(false);
       await loadTask();
     } catch (err: any) {
-      setEditError(
-        err.response?.data?.detail ||
-          JSON.stringify(err.response?.data) ||
-          'Ошибка сохранения'
-      );
+      const data = err.response?.data;
+      const msg =
+        data?.detail ||
+        (data && typeof data === 'object'
+          ? Object.values(data).flat().join(', ')
+          : null) ||
+        'Ошибка сохранения';
+      setEditError(String(msg));
     } finally {
       setSaving(false);
     }
-  };
-
-  // ─── Открыть модалку удаления ───────────────────
-  const openDeleteModal = () => {
-    setShowDeleteModal(true);
   };
 
   // ─── Подтвердить удаление ───────────────────────
@@ -115,11 +123,16 @@ function TaskDetailPage() {
     if (!task) return;
     setDeleting(true);
     try {
+      const columnId = task.column;
       await api.delete(`tasks/${task.id}/`);
-      // Возвращаемся на доску
-      const columnRes = await api.get(`columns/${task.column}/`);
-      const boardId = columnRes.data.board;
-      navigate(`/boards/${boardId}`);
+
+      // Возвращаемся на доску этой задачи
+      try {
+        const columnRes = await api.get(`columns/${columnId}/`);
+        navigate(`/boards/${columnRes.data.board}`);
+      } catch {
+        navigate(-1);
+      }
     } catch (err: any) {
       alert(err.response?.data?.detail || 'Не удалось удалить задачу');
       setDeleting(false);
@@ -142,6 +155,7 @@ function TaskDetailPage() {
     }
   };
 
+  // ─── Загрузка ───────────────────────────────────
   if (loading) {
     return (
       <div className="kb-loading">
@@ -152,9 +166,14 @@ function TaskDetailPage() {
 
   if (error || !task) {
     return (
-      <div>
-        <div className="alert alert-danger">{error || 'Задача не найдена'}</div>
-        <button className="btn btn-secondary" onClick={() => navigate(-1)}>
+      <div className="container mt-4">
+        <div className="alert alert-danger">
+          {error || 'Задача не найдена'}
+        </div>
+        <button
+          className="btn btn-outline-secondary"
+          onClick={() => navigate(-1)}
+        >
           ← Назад
         </button>
       </div>
@@ -162,174 +181,198 @@ function TaskDetailPage() {
   }
 
   return (
-    <div className="row">
-      {/* ═══ ЛЕВАЯ КОЛОНКА ═══ */}
-      <div className="col-lg-8">
-        {/* Заголовок + действия */}
-        <div className="d-flex justify-content-between align-items-start mb-3 kb-fade-in flex-wrap gap-2">
-          <h2 className="mb-0">{task.title}</h2>
-          <div className="d-flex gap-2">
-            <button
-              className="btn btn-outline-primary btn-sm"
-              onClick={openEditModal}
-            >
-              ✏️ Редактировать
-            </button>
-            <button
-              className="btn btn-outline-danger btn-sm"
-              onClick={openDeleteModal}
-            >
-              🗑 Удалить
-            </button>
-          </div>
-        </div>
-
-        {/* Описание */}
-        <div className="kb-card mb-4 kb-slide-up">
-          <div className="card-body">
-            <h6 className="text-muted mb-2 small">ОПИСАНИЕ</h6>
-            <p className="mb-0">
-              {task.description || 'Описание не заполнено'}
-            </p>
-          </div>
-        </div>
-
-        {/* Детали */}
-        <div className="kb-card mb-4 kb-slide-up kb-delay-1">
-          <div className="card-body">
-            <h6 className="text-muted mb-3 small">ДЕТАЛИ</h6>
-            <div className="row g-3">
-              <div className="col-md-6">
-                <div className="d-flex align-items-center gap-2 mb-2">
-                  <span>👤</span>
-                  <span className="text-muted small">Исполнитель</span>
-                </div>
-                <strong>
-                  {task.assignee?.username || 'Не назначен'}
-                </strong>
-              </div>
-              <div className="col-md-6">
-                <div className="d-flex align-items-center gap-2 mb-2">
-                  <span>📅</span>
-                  <span className="text-muted small">Срок</span>
-                </div>
-                <strong>
-                  {task.due_date
-                    ? new Date(task.due_date).toLocaleDateString('ru-RU')
-                    : 'Не задан'}
-                </strong>
-              </div>
-              <div className="col-md-6">
-                <div className="d-flex align-items-center gap-2 mb-2">
-                  <span>⚡</span>
-                  <span className="text-muted small">Приоритет</span>
-                </div>
-                <span
-                  className={`badge bg-${
-                    task.priority === 'high'
-                      ? 'danger'
-                      : task.priority === 'medium'
-                      ? 'warning'
-                      : 'secondary'
-                  }`}
-                >
-                  {task.priority === 'high'
-                    ? 'Высокий'
-                    : task.priority === 'medium'
-                    ? 'Средний'
-                    : 'Низкий'}
-                </span>
-              </div>
-              <div className="col-md-6">
-                <div className="d-flex align-items-center gap-2 mb-2">
-                  <span>🕐</span>
-                  <span className="text-muted small">Создана</span>
-                </div>
-                <strong>
-                  {new Date(task.created_at).toLocaleString('ru-RU')}
-                </strong>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Комментарии */}
-        <h4 className="kb-slide-up kb-delay-2">
-          💬 Комментарии ({task.comments.length})
-        </h4>
-        <div className="mb-3">
-          {task.comments.map((c, i) => (
-            <div
-              key={c.id}
-              className="kb-card mb-2 kb-slide-in-left"
-              style={{ animationDelay: `${i * 0.05}s` }}
-            >
-              <div className="card-body py-3">
-                <div className="d-flex justify-content-between align-items-center mb-1">
-                  <strong>{c.author.username}</strong>
-                  <small className="text-muted">
-                    {new Date(c.created_at).toLocaleString('ru-RU')}
-                  </small>
-                </div>
-                <p className="mb-0">{c.text}</p>
-              </div>
-            </div>
-          ))}
-          {task.comments.length === 0 && (
-            <p className="text-muted">Пока нет комментариев. Будьте первым!</p>
-          )}
-        </div>
-
-        <form onSubmit={addComment} className="kb-slide-up kb-delay-3">
-          <textarea
-            className="form-control mb-2"
-            rows={3}
-            placeholder="Написать комментарий..."
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-          />
+    <div className="container-fluid px-0">
+      {/* ═══ Заголовок и действия ═══ */}
+      <div className="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3 kb-fade-in">
+        <h2 className="mb-0">{task.title}</h2>
+        <div className="d-flex gap-2">
           <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={sendingComment || !commentText.trim()}
+            className="btn btn-outline-primary btn-sm"
+            onClick={openEditModal}
           >
-            {sendingComment ? 'Отправка...' : 'Отправить'}
+            ✏️ Редактировать
           </button>
-        </form>
+          <button
+            className="btn btn-outline-danger btn-sm"
+            onClick={() => setShowDeleteModal(true)}
+          >
+            🗑 Удалить
+          </button>
+        </div>
       </div>
 
-      {/* ═══ ПРАВАЯ КОЛОНКА — ИСТОРИЯ ═══ */}
-      <div className="col-lg-4">
-        <div className="kb-card kb-slide-up">
-          <div className="card-body">
-            <h6 className="text-muted mb-3 small">🕐 ИСТОРИЯ ИЗМЕНЕНИЙ</h6>
-            {task.history.length === 0 ? (
-              <p className="text-muted small mb-0">История пуста</p>
-            ) : (
-              <ul className="list-unstyled mb-0">
-                {task.history.map((h, i) => (
-                  <li
-                    key={h.id}
-                    className="mb-3 pb-3 kb-slide-in-right"
-                    style={{
-                      animationDelay: `${i * 0.05}s`,
-                      borderBottom:
-                        i < task.history.length - 1
-                          ? '1px solid var(--kb-border)'
-                          : 'none',
-                    }}
+      <div className="row">
+        {/* ═══ Левая колонка ═══ */}
+        <div className="col-lg-8">
+          {/* Описание */}
+          <div className="kb-card mb-3 kb-slide-up">
+            <div className="card-body">
+              <h6 className="text-muted mb-3 small text-uppercase">
+                Описание
+              </h6>
+              <p className="mb-0">
+                {task.description || 'Описание не заполнено'}
+              </p>
+            </div>
+          </div>
+
+          {/* Детали */}
+          <div className="kb-card mb-3 kb-slide-up kb-delay-1">
+            <div className="card-body">
+              <h6 className="text-muted mb-3 small text-uppercase">
+                Детали
+              </h6>
+              <div className="row g-3">
+                <div className="col-md-6">
+                  <div className="d-flex align-items-center gap-2 mb-1">
+                    <span>👤</span>
+                    <span className="text-muted small">Исполнитель</span>
+                  </div>
+                  <strong>
+                    {task.assignee?.username || 'Не назначен'}
+                  </strong>
+                </div>
+
+                <div className="col-md-6">
+                  <div className="d-flex align-items-center gap-2 mb-1">
+                    <span>📅</span>
+                    <span className="text-muted small">Срок</span>
+                  </div>
+                  <strong>
+                    {task.due_date
+                      ? new Date(task.due_date).toLocaleDateString('ru-RU')
+                      : 'Не задан'}
+                  </strong>
+                </div>
+
+                <div className="col-md-6">
+                  <div className="d-flex align-items-center gap-2 mb-1">
+                    <span>⚡</span>
+                    <span className="text-muted small">Приоритет</span>
+                  </div>
+                  <span
+                    className={`badge bg-${
+                      task.priority === 'high'
+                        ? 'danger'
+                        : task.priority === 'medium'
+                        ? 'warning'
+                        : 'secondary'
+                    }`}
                   >
-                    <div className="text-muted small mb-1">
-                      {new Date(h.changed_at).toLocaleString('ru-RU')}
+                    {task.priority === 'high'
+                      ? 'Высокий'
+                      : task.priority === 'medium'
+                      ? 'Средний'
+                      : 'Низкий'}
+                  </span>
+                </div>
+
+                <div className="col-md-6">
+                  <div className="d-flex align-items-center gap-2 mb-1">
+                    <span>🕐</span>
+                    <span className="text-muted small">Создана</span>
+                  </div>
+                  <strong>
+                    {new Date(task.created_at).toLocaleString('ru-RU')}
+                  </strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Комментарии */}
+          <div className="kb-card mb-3 kb-slide-up kb-delay-2">
+            <div className="card-body">
+              <h6 className="text-muted mb-3 small text-uppercase">
+                💬 Комментарии ({task.comments.length})
+              </h6>
+
+              {task.comments.length === 0 ? (
+                <p className="text-muted mb-3">
+                  Пока нет комментариев. Будьте первым!
+                </p>
+              ) : (
+                <div className="mb-3">
+                  {task.comments.map((c, i) => (
+                    <div
+                      key={c.id}
+                      className="mb-3 pb-3 kb-slide-in-left"
+                      style={{
+                        animationDelay: `${i * 0.05}s`,
+                        borderBottom:
+                          i < task.comments.length - 1
+                            ? '1px solid var(--kb-border)'
+                            : 'none',
+                      }}
+                    >
+                      <div className="d-flex justify-content-between align-items-center mb-1">
+                        <strong>{c.author.username}</strong>
+                        <small className="text-muted">
+                          {new Date(c.created_at).toLocaleString('ru-RU')}
+                        </small>
+                      </div>
+                      <p className="mb-0">{c.text}</p>
                     </div>
-                    <div className="small">
-                      <strong>{h.user.username}</strong> изменил{' '}
-                      <em>{h.field_name}</em>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={addComment}>
+                <textarea
+                  className="form-control mb-2"
+                  rows={3}
+                  placeholder="Написать комментарий..."
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={sendingComment || !commentText.trim()}
+                >
+                  {sendingComment ? 'Отправка...' : 'Отправить'}
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        {/* ═══ Правая колонка — история ═══ */}
+        <div className="col-lg-4">
+          <div className="kb-card kb-slide-up">
+            <div className="card-body">
+              <h6 className="text-muted mb-3 small text-uppercase">
+                🕐 История изменений
+              </h6>
+
+              {task.history.length === 0 ? (
+                <p className="text-muted small mb-0">История пуста</p>
+              ) : (
+                <ul className="list-unstyled mb-0">
+                  {task.history.map((h, i) => (
+                    <li
+                      key={h.id}
+                      className="mb-3 pb-3 kb-slide-in-right"
+                      style={{
+                        animationDelay: `${i * 0.05}s`,
+                        borderBottom:
+                          i < task.history.length - 1
+                            ? '1px solid var(--kb-border)'
+                            : 'none',
+                      }}
+                    >
+                      <div className="text-muted small mb-1">
+                        {new Date(h.changed_at).toLocaleString('ru-RU')}
+                      </div>
+                      <div className="small">
+                        <strong>{h.user.username}</strong> изменил{' '}
+                        <em>{h.field_name}</em>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -413,7 +456,7 @@ function TaskDetailPage() {
                   </div>
                 </div>
 
-                <div className="mb-3">
+                <div className="mb-0">
                   <label className="form-label">Исполнитель</label>
                   <select
                     className="form-select"
@@ -484,9 +527,7 @@ function TaskDetailPage() {
             </div>
 
             <div className="kb-modal-body">
-              <p className="mb-2">
-                Вы собираетесь удалить задачу:
-              </p>
+              <p className="mb-2">Вы собираетесь удалить задачу:</p>
               <div
                 className="p-3 mb-3"
                 style={{
@@ -498,8 +539,8 @@ function TaskDetailPage() {
                 <strong>{task.title}</strong>
               </div>
               <p className="text-muted small mb-0">
-                <strong>Внимание:</strong> Это действие нельзя отменить. Все
-                комментарии и история изменений этой задачи будут удалены
+                <strong>Внимание:</strong> это действие нельзя отменить. Все
+                комментарии и история изменений задачи будут удалены
                 безвозвратно.
               </p>
             </div>
