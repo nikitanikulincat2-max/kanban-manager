@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
+import { toast } from 'react-toastify';
 import api from '../api/axiosConfig';
 import type { Workspace, WorkspaceMembership } from '../types';
-import { useConfirm } from '../contexts/ConfirmContext';
+import { useAuth } from '../contexts/AuthContext';
 
 interface UserSearchResult {
   id: number;
@@ -24,8 +25,7 @@ function MembersModal({
   show,
   onHide,
 }: MembersModalProps) {
-  const { confirm } = useConfirm();
-
+  const { user, refreshUser } = useAuth();
   const [members, setMembers] = useState<WorkspaceMembership[]>([]);
   const [inviteRole, setInviteRole] = useState<'manager' | 'member'>('member');
   const [inviteError, setInviteError] = useState('');
@@ -33,9 +33,7 @@ function MembersModal({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
-  const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(
-    null
-  );
+  const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(null);
   const [searching, setSearching] = useState(false);
 
   useEffect(() => {
@@ -77,7 +75,7 @@ function MembersModal({
       const res = await api.get<Workspace>(`workspaces/${workspaceId}/`);
       setMembers(res.data.memberships || []);
     } catch {
-      alert('Не удалось загрузить участников');
+      toast.error('Не удалось загрузить участников');
     } finally {
       setLoading(false);
     }
@@ -94,6 +92,17 @@ function MembersModal({
         user_id: selectedUser.id,
         role: inviteRole,
       });
+
+      if (user && selectedUser.id === user.id) {
+        await refreshUser();
+      }
+
+      toast.success(
+        `${selectedUser.username} добавлен как ${
+          inviteRole === 'manager' ? 'менеджер' : 'участник'
+        }`
+      );
+
       setSelectedUser(null);
       setSearchQuery('');
       setSearchResults([]);
@@ -109,30 +118,36 @@ function MembersModal({
         user_id: userId,
         role: newRole,
       });
+
+      if (user && userId === user.id) {
+        await refreshUser();
+      }
+
+      toast.success(
+        `Роль изменена на ${newRole === 'manager' ? 'менеджера' : 'участника'}`
+      );
+
       loadMembers();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Ошибка смены роли');
+      toast.error(err.response?.data?.detail || 'Ошибка смены роли');
     }
   };
 
   const removeMember = async (userId: number, username: string) => {
-    const ok = await confirm({
-      title: 'Удаление участника',
-      message: `Удалить ${username} из пространства?\n\nПользователь потеряет доступ ко всем доскам и задачам этого пространства.`,
-      confirmText: 'Удалить',
-      cancelText: 'Отмена',
-      variant: 'danger',
-    });
-
-    if (!ok) return;
-
+    if (!window.confirm(`Удалить ${username} из пространства?`)) return;
     try {
       await api.delete(
         `workspaces/${workspaceId}/remove_member/?user_id=${userId}`
       );
+
+      if (user && userId === user.id) {
+        await refreshUser();
+      }
+
+      toast.success(`${username} удалён из пространства`);
       loadMembers();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Ошибка удаления');
+      toast.error(err.response?.data?.detail || 'Ошибка удаления');
     }
   };
 
@@ -159,28 +174,106 @@ function MembersModal({
         <div className="kb-modal-body">
           {/* Форма приглашения */}
           <div
-            className="kb-card mb-4 kb-slide-down"
-            style={{ borderColor: 'var(--kb-primary-light)' }}
+            className="kb-card kb-slide-down"
+            style={{
+              marginBottom: 24,
+              borderColor: 'var(--kb-primary-light)',
+              background:
+                'linear-gradient(135deg, rgba(99, 102, 241, 0.04), rgba(139, 92, 246, 0.06))',
+            }}
           >
-            <div className="card-body">
-              <label className="form-label fw-bold mb-3">
-                ✉️ Пригласить пользователя
-              </label>
+            <div style={{ padding: '20px 24px' }}>
+              <div
+                className="d-flex align-items-center"
+                style={{ gap: 8, marginBottom: 16 }}
+              >
+                <span
+                  className="d-flex align-items-center justify-content-center"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    background: 'var(--kb-gradient)',
+                    color: 'white',
+                    flexShrink: 0,
+                  }}
+                >
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                    Пригласить в пространство
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '0.78rem',
+                      color: 'var(--kb-text-muted)',
+                    }}
+                  >
+                    Найдите пользователя по логину или email
+                  </div>
+                </div>
+              </div>
 
-              <div className="position-relative mb-2">
+              <div
+                className="position-relative"
+                style={{ marginBottom: 14 }}
+              >
                 <input
                   type="text"
-                  className="form-control"
+                  className="form-control form-control-lg"
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value);
                     setSelectedUser(null);
                   }}
-                  placeholder="Введите логин или email (мин. 2 символа)"
+                  placeholder="Логин или email..."
+                  style={{ paddingLeft: 44 }}
                 />
 
+                <span
+                  className="d-flex align-items-center justify-content-center"
+                  style={{
+                    position: 'absolute',
+                    left: 14,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--kb-text-muted)',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                </span>
+
                 {searching && (
-                  <div className="position-absolute top-50 end-0 translate-middle-y me-3">
+                  <div
+                    className="position-absolute top-50 end-0 translate-middle-y"
+                    style={{ right: 14 }}
+                  >
                     <div
                       className="spinner-border spinner-border-sm"
                       style={{ color: 'var(--kb-primary)' }}
@@ -193,76 +286,138 @@ function MembersModal({
                     className="list-group position-absolute w-100 shadow-lg"
                     style={{
                       zIndex: 1000,
-                      maxHeight: 250,
+                      maxHeight: 280,
                       overflowY: 'auto',
+                      top: 'calc(100% + 6px)',
                       borderRadius: 'var(--kb-radius)',
                       animation: 'kb-fadeIn 0.15s ease-out',
+                      border: '1px solid var(--kb-border)',
                     }}
                   >
                     {searchResults.map((u) => (
                       <button
                         key={u.id}
                         type="button"
-                        className="list-group-item list-group-item-action"
+                        className="list-group-item list-group-item-action d-flex align-items-center"
+                        style={{ gap: 12, padding: '12px 16px' }}
                         onClick={() => {
                           setSelectedUser(u);
                           setSearchResults([]);
                           setSearchQuery(u.username);
                         }}
                       >
-                        <div className="d-flex justify-content-between">
-                          <span>
-                            <strong>{u.username}</strong>
-                            {(u.first_name || u.last_name) && (
-                              <span className="text-muted ms-2">
-                                {u.first_name} {u.last_name}
-                              </span>
-                            )}
-                          </span>
-                          <small className="text-muted">ID: {u.id}</small>
+                        <span
+                          className="d-flex align-items-center justify-content-center flex-shrink-0"
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: '50%',
+                            background: 'var(--kb-gradient)',
+                            color: 'white',
+                            fontWeight: 600,
+                            fontSize: 14,
+                          }}
+                        >
+                          {u.username[0].toUpperCase()}
+                        </span>
+                        <div
+                          className="flex-grow-1 text-start"
+                          style={{ minWidth: 0 }}
+                        >
+                          <div style={{ fontWeight: 500 }}>{u.username}</div>
+                          {u.email && (
+                            <small className="text-muted d-block text-truncate">
+                              {u.email}
+                            </small>
+                          )}
                         </div>
-                        {u.email && (
-                          <small className="text-muted d-block">
-                            {u.email}
-                          </small>
-                        )}
+                        <small className="text-muted flex-shrink-0">
+                          ID: {u.id}
+                        </small>
                       </button>
                     ))}
                   </div>
                 )}
+
+                {searchQuery.length >= 2 &&
+                  !searching &&
+                  searchResults.length === 0 &&
+                  !selectedUser && (
+                    <div
+                      className="text-center"
+                      style={{
+                        marginTop: 10,
+                        fontSize: '0.85rem',
+                        color: 'var(--kb-text-muted)',
+                      }}
+                    >
+                      Пользователи не найдены
+                    </div>
+                  )}
               </div>
 
               {selectedUser && (
                 <div
-                  className="alert alert-info py-2 mb-2 kb-scale-in-pop"
+                  className="d-flex align-items-center kb-scale-in-pop"
                   style={{
-                    background: 'rgba(99, 102, 241, 0.1)',
-                    border: '1px solid var(--kb-primary-light)',
-                    color: 'var(--kb-primary-dark)',
+                    gap: 12,
+                    padding: '12px 16px',
+                    marginBottom: 14,
+                    background: 'white',
+                    border: '2px solid var(--kb-primary)',
+                    borderRadius: 'var(--kb-radius-sm)',
                   }}
                 >
-                  Выбран: <strong>{selectedUser.username}</strong>
-                  {selectedUser.email && (
-                    <span className="text-muted ms-1">
-                      ({selectedUser.email})
-                    </span>
-                  )}
+                  <span
+                    className="d-flex align-items-center justify-content-center flex-shrink-0"
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      background: 'var(--kb-gradient)',
+                      color: 'white',
+                      fontWeight: 600,
+                      fontSize: 14,
+                    }}
+                  >
+                    {selectedUser.username[0].toUpperCase()}
+                  </span>
+                  <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>
+                      {selectedUser.username}
+                    </div>
+                    {selectedUser.email && (
+                      <small className="text-muted d-block text-truncate">
+                        {selectedUser.email}
+                      </small>
+                    )}
+                  </div>
                   <button
-                    className="btn btn-sm btn-link float-end p-0"
-                    style={{ color: 'var(--kb-primary)' }}
+                    className="btn btn-sm btn-outline-secondary flex-shrink-0"
                     onClick={() => {
                       setSelectedUser(null);
                       setSearchQuery('');
                     }}
+                    title="Отменить выбор"
                   >
-                    Отменить
+                    ✕
                   </button>
                 </div>
               )}
 
-              <div className="row g-2 align-items-end mt-2">
-                <div className="col-md-8">
-                  <label className="form-label small mb-1">Роль</label>
+              <div className="row g-3">
+                <div className="col-md-7">
+                  <label
+                    className="form-label"
+                    style={{
+                      fontSize: '0.82rem',
+                      fontWeight: 500,
+                      color: 'var(--kb-text-muted)',
+                      marginBottom: 6,
+                    }}
+                  >
+                    Роль в пространстве
+                  </label>
                   <select
                     className="form-select"
                     value={inviteRole}
@@ -273,28 +428,40 @@ function MembersModal({
                     <option value="member">
                       Участник — работа с задачами
                     </option>
-                    <option value="manager">Менеджер — полный доступ</option>
+                    <option value="manager">
+                      Менеджер — полный доступ
+                    </option>
                   </select>
                 </div>
-                <div className="col-md-4">
+
+                <div className="col-md-5 d-flex align-items-end">
                   <button
                     className="btn btn-primary w-100"
                     onClick={inviteMember}
                     disabled={!selectedUser}
+                    style={{ height: 42 }}
                   >
-                    Пригласить
+                    {selectedUser ? '✓ Пригласить' : 'Пригласить'}
                   </button>
                 </div>
               </div>
 
               {inviteError && (
-                <div className="alert alert-danger mt-2 mb-0 py-1 kb-shake">
+                <div
+                  className="alert alert-danger kb-shake"
+                  style={{
+                    marginTop: 14,
+                    marginBottom: 0,
+                    padding: '10px 14px',
+                  }}
+                >
                   {inviteError}
                 </div>
               )}
             </div>
           </div>
 
+          {/* Список участников */}
           <h6 className="mb-3">Текущие участники ({members.length}):</h6>
 
           {loading ? (
@@ -337,7 +504,9 @@ function MembersModal({
                         <strong>{m.user.username}</strong>
                         <span
                           className={`badge ms-2 ${
-                            m.role === 'manager' ? 'bg-danger' : 'bg-secondary'
+                            m.role === 'manager'
+                              ? 'bg-danger'
+                              : 'bg-secondary'
                           }`}
                         >
                           {m.role === 'manager' ? 'Менеджер' : 'Участник'}
@@ -373,7 +542,9 @@ function MembersModal({
 
                     <button
                       className="btn btn-sm btn-outline-danger"
-                      onClick={() => removeMember(m.user.id, m.user.username)}
+                      onClick={() =>
+                        removeMember(m.user.id, m.user.username)
+                      }
                       title="Удалить из пространства"
                     >
                       ✕

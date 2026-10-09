@@ -1,19 +1,18 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import api from '../api/axiosConfig';
 import type { Workspace, Board, Paginated } from '../types';
 import { useWorkspaceRole } from '../hooks/useWorkspaceRole';
 import MembersModal from '../components/MembersModal';
-import { useConfirm } from '../contexts/ConfirmContext';
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 
 function WorkspaceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const workspaceId = id ? Number(id) : null;
   const { isManager } = useWorkspaceRole(workspaceId);
-  const { confirm } = useConfirm();
-
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
   const [boardName, setBoardName] = useState('');
@@ -21,6 +20,7 @@ function WorkspaceDetailPage() {
   const [error, setError] = useState('');
   const [showMembers, setShowMembers] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteWsModal, setShowDeleteWsModal] = useState(false);
 
   useEffect(() => {
     loadWorkspace();
@@ -41,9 +41,9 @@ function WorkspaceDetailPage() {
         : boardsRes.data.results;
       setBoards(boardsList);
     } catch (err: any) {
-      setError(
-        err.response?.data?.detail || 'Не удалось загрузить пространство'
-      );
+      const msg = err.response?.data?.detail || 'Не удалось загрузить пространство';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -56,38 +56,31 @@ function WorkspaceDetailPage() {
     try {
       await api.post('boards/', { workspace: Number(id), name: boardName });
       setBoardName('');
+      toast.success('Доска создана');
       loadWorkspace();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка создания доски');
+      const msg = err.response?.data?.detail || 'Ошибка создания доски';
+      setError(msg);
+      toast.error(msg);
     }
   };
 
   const deleteWorkspace = async () => {
-    if (!workspace) return;
+  if (!workspace) return;
+  setDeleting(true);
+  try {
+    await api.delete(`workspaces/${workspace.id}/`);
+    toast.success('Пространство удалено');
+    navigate('/workspaces');
+  } catch (err: any) {
+    toast.error(err.response?.data?.detail || 'Не удалось удалить пространство');
+    setDeleting(false);
+    setShowDeleteWsModal(false);
+  }
+};
 
-    const ok = await confirm({
-      title: '🗑 Удаление пространства',
-      message: `Удалить пространство «${workspace.name}»?\n\nВСЕ доски, колонки, задачи и комментарии этого пространства будут безвозвратно удалены.\n\nЭто действие нельзя отменить.`,
-      confirmText: 'Удалить пространство',
-      cancelText: 'Отмена',
-      variant: 'danger',
-    });
-
-    if (!ok) return;
-
-    setDeleting(true);
-    try {
-      await api.delete(`workspaces/${workspace.id}/`);
-      navigate('/workspaces');
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Не удалось удалить пространство');
-      setDeleting(false);
-    }
-  };
-
-  if (loading) return <div className="kb-loading">Загрузка...</div>;
-  if (!workspace)
-    return <div className="alert alert-danger mt-5">Пространство не найдено</div>;
+  if (loading) return <div className="kb-loading"><span>Загрузка...</span></div>;
+  if (!workspace) return <div className="alert alert-danger mt-5">Пространство не найдено</div>;
 
   return (
     <div>
@@ -114,7 +107,7 @@ function WorkspaceDetailPage() {
           {isManager && (
             <button
               className="btn btn-outline-danger btn-sm"
-              onClick={deleteWorkspace}
+              onClick={() => setShowDeleteWsModal(true)}
               disabled={deleting}
             >
               {deleting ? 'Удаление...' : '🗑 Удалить'}
@@ -137,9 +130,7 @@ function WorkspaceDetailPage() {
             placeholder="Название новой доски"
             required
           />
-          <button type="submit" className="btn btn-success">
-            Создать доску
-          </button>
+          <button type="submit" className="btn btn-success">Создать доску</button>
         </form>
       ) : (
         <div className="alert alert-info">
@@ -153,18 +144,13 @@ function WorkspaceDetailPage() {
         <div className="row">
           {boards.map((b) => (
             <div key={b.id} className="col-md-4 mb-3">
-              <div className="card h-100">
-                <div className="card-body">
-                  <h5 className="card-title">{b.name}</h5>
+              <div className="kb-card kb-card-hover h-100">
+                <div style={{ padding: '20px 24px' }}>
+                  <h5 style={{ fontWeight: 600 }}>{b.name}</h5>
                   {b.description && (
-                    <p className="card-text small text-muted">
-                      {b.description}
-                    </p>
+                    <p className="text-muted small">{b.description}</p>
                   )}
-                  <Link
-                    to={`/boards/${b.id}`}
-                    className="btn btn-primary btn-sm"
-                  >
+                  <Link to={`/boards/${b.id}`} className="btn btn-primary btn-sm">
                     Открыть доску
                   </Link>
                 </div>
@@ -172,6 +158,18 @@ function WorkspaceDetailPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {workspace && (
+        <ConfirmDeleteModal
+          show={showDeleteWsModal}
+          title="Удаление пространства"
+          message={`Вы собираетесь удалить пространство «${workspace.name}».\n\nВсе доски, колонки, задачи и комментарии будут безвозвратно удалены.`}
+          itemName={workspace.name}
+          onConfirm={deleteWorkspace}
+          onCancel={() => setShowDeleteWsModal(false)}
+          loading={deleting}
+        />
       )}
 
       {workspace && (

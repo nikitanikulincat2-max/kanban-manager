@@ -145,6 +145,7 @@ function BoardDetailPage() {
     }
   };
 
+
   const deleteTask = async (taskId: number, title: string) => {
     const ok = await confirm({
       title: '🗑 Удаление задачи',
