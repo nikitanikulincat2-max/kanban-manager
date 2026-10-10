@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import api from '../api/axiosConfig';
+import { toast } from 'react-toastify';
 import type {
   Workspace,
   WorkspaceMembership,
@@ -97,6 +98,7 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
         visible_to_users_ids: visibility === 'users' ? selectedUserIds : [],
       });
       setSubmitting(false);
+      toast.success('Задача создана');
       onSuccess();
     } catch (err: any) {
       setError(

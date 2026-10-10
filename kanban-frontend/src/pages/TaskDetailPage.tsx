@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import type { FormEvent } from 'react';
+import type { FormEvent, ChangeEvent } from 'react';
 import { toast } from 'react-toastify';
 import api from '../api/axiosConfig';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
@@ -44,6 +44,7 @@ function TaskDetailPage() {
   const [editDueDate, setEditDueDate] = useState('');
   const [editAssigneeId, setEditAssigneeId] = useState<number | ''>('');
 
+  // Поля видимости
   const [editVisibility, setEditVisibility] = useState<VisibilityType>('public');
   const [editGroupId, setEditGroupId] = useState<number | ''>('');
   const [editSelectedUserIds, setEditSelectedUserIds] = useState<number[]>([]);
@@ -54,6 +55,7 @@ function TaskDetailPage() {
 
   useEffect(() => {
     loadTask();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadTask = async () => {
@@ -120,13 +122,10 @@ function TaskDetailPage() {
 
     setEditVisibility(task.visibility || 'public');
     setEditGroupId(task.group || '');
-    setEditSelectedUserIds(
-      task.visible_to_users?.map((u) => u.id) || []
-    );
+    setEditSelectedUserIds(task.visible_to_users?.map((u) => u.id) || []);
 
     setShowEdit(true);
 
-    // Загружаем участников и группы пространства
     try {
       const colRes = await api.get(`columns/${task.column}/`);
       const boardRes = await api.get(`boards/${colRes.data.board}/`);
@@ -145,7 +144,6 @@ function TaskDetailPage() {
     );
   };
 
-  // ─── Сохранить задачу ───────────────────────────
   const saveTask = async () => {
     if (!task) return;
 
@@ -154,7 +152,7 @@ function TaskDetailPage() {
       return;
     }
     if (editVisibility === 'group' && !editGroupId) {
-      toast.warn('Выберите группу');
+      toast.warn('Выберите группу для видимости');
       return;
     }
     if (editVisibility === 'users' && editSelectedUserIds.length === 0) {
@@ -172,13 +170,35 @@ function TaskDetailPage() {
       assignee_id: editAssigneeId === '' ? null : editAssigneeId,
       visibility: editVisibility,
       group: editVisibility === 'group' ? editGroupId : null,
-      visible_to_users_ids: editVisibility === 'users' ? editSelectedUserIds : [],
+      visible_to_users_ids:
+        editVisibility === 'users' ? editSelectedUserIds : [],
     };
 
     try {
       await api.patch(`tasks/${id}/`, payload);
+
+      // Определяем, что именно изменилось для более точного уведомления
+      const visibilityChanged = task.visibility !== editVisibility;
+      const usersChanged =
+        editVisibility === 'users' &&
+        JSON.stringify(
+          (task.visible_to_users || []).map((u) => u.id).sort()
+        ) !== JSON.stringify([...editSelectedUserIds].sort());
+      const groupChanged =
+        editVisibility === 'group' && task.group !== editGroupId;
+
       setShowEdit(false);
-      toast.success('Задача обновлена');
+
+      if (visibilityChanged) {
+        toast.success('Видимость задачи изменена');
+      } else if (usersChanged) {
+        toast.success('Список видимых пользователей обновлён');
+      } else if (groupChanged) {
+        toast.success('Группа задачи изменена');
+      } else {
+        toast.success('Задача обновлена');
+      }
+
       loadTask();
     } catch (err: any) {
       const data = err.response?.data;
@@ -195,7 +215,7 @@ function TaskDetailPage() {
   };
 
   // ─── Загрузка файла ─────────────────────────────
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -274,8 +294,16 @@ function TaskDetailPage() {
     return false;
   })();
 
-  if (loading) return <div className="kb-loading"><span>Загрузка задачи...</span></div>;
-  if (!task) return <div className="alert alert-danger mt-5">Задача не найдена</div>;
+  if (loading) {
+    return (
+      <div className="kb-loading">
+        <span>Загрузка задачи...</span>
+      </div>
+    );
+  }
+  if (!task) {
+    return <div className="alert alert-danger mt-5">Задача не найдена</div>;
+  }
 
   const priorityLabel: Record<string, string> = {
     high: 'Высокий',
@@ -309,18 +337,23 @@ function TaskDetailPage() {
               <span
                 className="badge bg-light text-dark"
                 title={
-                  task.visibility === 'public' ? 'Все участники' :
-                  task.visibility === 'private' ? 'Только автор и исполнитель' :
-                  task.visibility === 'users' ? 'Выбранные пользователи' :
-                  `Группа: ${task.group_name || ''}`
+                  task.visibility === 'public'
+                    ? 'Все участники'
+                    : task.visibility === 'private'
+                    ? 'Только автор и исполнитель'
+                    : task.visibility === 'users'
+                    ? 'Выбранные пользователи'
+                    : `Группа: ${task.group_name || ''}`
                 }
               >
-                {visibilityIcon[task.visibility]} {
-                  task.visibility === 'public' ? 'Все' :
-                  task.visibility === 'private' ? 'Приватная' :
-                  task.visibility === 'users' ? `Пользователи (${task.visible_to_users?.length || 0})` :
-                  `Группа: ${task.group_name || ''}`
-                }
+                {visibilityIcon[task.visibility]}{' '}
+                {task.visibility === 'public'
+                  ? 'Все'
+                  : task.visibility === 'private'
+                  ? 'Приватная'
+                  : task.visibility === 'users'
+                  ? `Пользователи (${task.visible_to_users?.length || 0})`
+                  : `Группа: ${task.group_name || ''}`}
               </span>
             </div>
           </div>
@@ -350,12 +383,17 @@ function TaskDetailPage() {
         {/* Описание */}
         <div className="kb-card mb-4 kb-slide-up">
           <div style={{ padding: '28px 32px' }}>
-            <h6 className="text-muted mb-3 small text-uppercase" style={{ letterSpacing: '0.05em', fontWeight: 600 }}>
+            <h6
+              className="text-muted mb-3 small text-uppercase"
+              style={{ letterSpacing: '0.05em', fontWeight: 600 }}
+            >
               Описание
             </h6>
             <p className="mb-0" style={{ fontSize: '1.05rem', lineHeight: 1.7 }}>
               {task.description || (
-                <span className="text-muted fst-italic">Описание не заполнено</span>
+                <span className="text-muted fst-italic">
+                  Описание не заполнено
+                </span>
               )}
             </p>
           </div>
@@ -364,14 +402,20 @@ function TaskDetailPage() {
         {/* Детали */}
         <div className="kb-card mb-4 kb-slide-up kb-delay-1">
           <div style={{ padding: '28px 32px' }}>
-            <h6 className="text-muted mb-3 small text-uppercase" style={{ letterSpacing: '0.05em', fontWeight: 600 }}>
+            <h6
+              className="text-muted mb-3 small text-uppercase"
+              style={{ letterSpacing: '0.05em', fontWeight: 600 }}
+            >
               Детали
             </h6>
 
             <div className="row" style={{ rowGap: 20 }}>
               <div className="col-md-6">
                 <div className="d-flex align-items-center" style={{ gap: 14 }}>
-                  <span className="text-muted d-flex align-items-center" style={{ minWidth: 145 }}>
+                  <span
+                    className="text-muted d-flex align-items-center"
+                    style={{ minWidth: 145 }}
+                  >
                     <span style={{ marginRight: 10 }}>👤</span>Исполнитель
                   </span>
                   <strong>
@@ -384,10 +428,19 @@ function TaskDetailPage() {
 
               <div className="col-md-6">
                 <div className="d-flex align-items-center" style={{ gap: 14 }}>
-                  <span className="text-muted d-flex align-items-center" style={{ minWidth: 145 }}>
+                  <span
+                    className="text-muted d-flex align-items-center"
+                    style={{ minWidth: 145 }}
+                  >
                     <span style={{ marginRight: 10 }}>📅</span>Срок
                   </span>
-                  <span className={task.due_date && new Date(task.due_date) < new Date() ? 'text-danger fw-bold' : ''}>
+                  <span
+                    className={
+                      task.due_date && new Date(task.due_date) < new Date()
+                        ? 'text-danger fw-bold'
+                        : ''
+                    }
+                  >
                     {task.due_date || (
                       <span className="text-muted fst-italic">Не задан</span>
                     )}
@@ -397,7 +450,10 @@ function TaskDetailPage() {
 
               <div className="col-md-6">
                 <div className="d-flex align-items-center" style={{ gap: 14 }}>
-                  <span className="text-muted d-flex align-items-center" style={{ minWidth: 145 }}>
+                  <span
+                    className="text-muted d-flex align-items-center"
+                    style={{ minWidth: 145 }}
+                  >
                     <span style={{ marginRight: 10 }}>⚡</span>Приоритет
                   </span>
                   <span className={`badge bg-${priorityColor[task.priority]}`}>
@@ -408,10 +464,15 @@ function TaskDetailPage() {
 
               <div className="col-md-6">
                 <div className="d-flex align-items-center" style={{ gap: 14 }}>
-                  <span className="text-muted d-flex align-items-center" style={{ minWidth: 145 }}>
+                  <span
+                    className="text-muted d-flex align-items-center"
+                    style={{ minWidth: 145 }}
+                  >
                     <span style={{ marginRight: 10 }}>🕐</span>Создана
                   </span>
-                  <span>{new Date(task.created_at).toLocaleString('ru-RU')}</span>
+                  <span>
+                    {new Date(task.created_at).toLocaleString('ru-RU')}
+                  </span>
                 </div>
               </div>
             </div>
@@ -422,7 +483,10 @@ function TaskDetailPage() {
         <div className="kb-card mb-4 kb-slide-up kb-delay-2">
           <div style={{ padding: '28px 32px' }}>
             <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-              <h6 className="text-muted mb-0 small text-uppercase" style={{ letterSpacing: '0.05em', fontWeight: 600 }}>
+              <h6
+                className="text-muted mb-0 small text-uppercase"
+                style={{ letterSpacing: '0.05em', fontWeight: 600 }}
+              >
                 📎 Файлы ({task.attachments?.length || 0})
               </h6>
               <label
@@ -441,7 +505,9 @@ function TaskDetailPage() {
             </div>
 
             {uploadError && (
-              <div className="alert alert-danger py-2 mb-3 kb-shake">{uploadError}</div>
+              <div className="alert alert-danger py-2 mb-3 kb-shake">
+                {uploadError}
+              </div>
             )}
 
             {!task.attachments || task.attachments.length === 0 ? (
@@ -480,7 +546,9 @@ function TaskDetailPage() {
                           </a>
                           <small className="text-muted">
                             {att.uploaded_by.username} •{' '}
-                            {new Date(att.uploaded_at).toLocaleDateString('ru-RU')}
+                            {new Date(att.uploaded_at).toLocaleDateString(
+                              'ru-RU'
+                            )}
                           </small>
                         </div>
                         <button
@@ -516,7 +584,10 @@ function TaskDetailPage() {
                   style={{ animationDelay: `${i * 0.05}s` }}
                 >
                   <div style={{ padding: '20px 24px' }}>
-                    <div className="d-flex align-items-start" style={{ gap: 16 }}>
+                    <div
+                      className="d-flex align-items-start"
+                      style={{ gap: 16 }}
+                    >
                       <div
                         className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
                         style={{
@@ -537,7 +608,14 @@ function TaskDetailPage() {
                             {new Date(c.created_at).toLocaleString('ru-RU')}
                           </small>
                         </div>
-                        <p className="mb-0" style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '1rem' }}>
+                        <p
+                          className="mb-0"
+                          style={{
+                            whiteSpace: 'pre-wrap',
+                            lineHeight: 1.6,
+                            fontSize: '1rem',
+                          }}
+                        >
                           {c.text}
                         </p>
                       </div>
@@ -586,14 +664,22 @@ function TaskDetailPage() {
           }}
         >
           <div style={{ padding: '24px 26px 12px' }}>
-            <h6 className="text-muted mb-0 small text-uppercase" style={{ letterSpacing: '0.05em', fontWeight: 600 }}>
+            <h6
+              className="text-muted mb-0 small text-uppercase"
+              style={{ letterSpacing: '0.05em', fontWeight: 600 }}
+            >
               🕐 История изменений
             </h6>
           </div>
 
           <div
             className="kb-history-scroll"
-            style={{ padding: '0 26px 24px', overflowY: 'auto', overflowX: 'hidden', flexGrow: 1 }}
+            style={{
+              padding: '0 26px 24px',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              flexGrow: 1,
+            }}
           >
             <ul className="list-unstyled mb-0">
               {task.history.length === 0 ? (
@@ -601,6 +687,7 @@ function TaskDetailPage() {
               ) : (
                 task.history
                   .filter((h) => {
+                    // Скрываем старые технические записи на английском
                     const oldFields = [
                       'status',
                       'column',
@@ -613,9 +700,11 @@ function TaskDetailPage() {
                       'visibility',
                     ];
                     if (oldFields.includes(h.field_name)) return false;
-
-                    if (h.field_name === 'status' && h.new_value === 'created') return false;
-
+                    if (
+                      h.field_name === 'status' &&
+                      h.new_value === 'created'
+                    )
+                      return false;
                     return true;
                   })
                   .map((h, i, arr) => (
@@ -626,7 +715,10 @@ function TaskDetailPage() {
                         animationDelay: `${i * 0.05}s`,
                         paddingBottom: i < arr.length - 1 ? 16 : 0,
                         marginBottom: i < arr.length - 1 ? 16 : 0,
-                        borderBottom: i < arr.length - 1 ? '1px solid var(--kb-border)' : 'none',
+                        borderBottom:
+                          i < arr.length - 1
+                            ? '1px solid var(--kb-border)'
+                            : 'none',
                       }}
                     >
                       <div className="small text-muted mb-2">
@@ -641,12 +733,18 @@ function TaskDetailPage() {
                         >
                           {h.old_value && (
                             <>
-                              <span className="badge bg-light text-dark">{h.old_value}</span>
-                              {h.new_value && <span className="text-muted">→</span>}
+                              <span className="badge bg-light text-dark">
+                                {h.old_value}
+                              </span>
+                              {h.new_value && (
+                                <span className="text-muted">→</span>
+                              )}
                             </>
                           )}
                           {h.new_value && (
-                            <span className="badge bg-primary">{h.new_value}</span>
+                            <span className="badge bg-primary">
+                              {h.new_value}
+                            </span>
                           )}
                           {!h.old_value && !h.new_value && (
                             <span className="badge bg-secondary">изменено</span>
@@ -663,8 +761,14 @@ function TaskDetailPage() {
 
       {/* ═══ МОДАЛКА РЕДАКТИРОВАНИЯ ═══ */}
       {showEdit && (
-        <div className="kb-modal-backdrop" onClick={() => !saving && setShowEdit(false)}>
-          <div className="kb-modal-content" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="kb-modal-backdrop"
+          onClick={() => !saving && setShowEdit(false)}
+        >
+          <div
+            className="kb-modal-content"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="kb-modal-header">
               <h5 className="kb-modal-title">✏️ Редактировать задачу</h5>
               <button
@@ -676,7 +780,6 @@ function TaskDetailPage() {
             </div>
 
             <div className="kb-modal-body">
-              {/* Название */}
               <div className="mb-3">
                 <label className="form-label">Название</label>
                 <input
@@ -688,7 +791,6 @@ function TaskDetailPage() {
                 />
               </div>
 
-              {/* Описание */}
               <div className="mb-3">
                 <label className="form-label">Описание</label>
                 <textarea
@@ -699,7 +801,6 @@ function TaskDetailPage() {
                 />
               </div>
 
-              {/* Приоритет + срок */}
               <div className="row">
                 <div className="col-md-6 mb-3">
                   <label className="form-label">Приоритет</label>
@@ -724,14 +825,15 @@ function TaskDetailPage() {
                 </div>
               </div>
 
-              {/* Исполнитель */}
               <div className="mb-3">
                 <label className="form-label">Исполнитель</label>
                 <select
                   className="form-select"
                   value={editAssigneeId}
                   onChange={(e) =>
-                    setEditAssigneeId(e.target.value === '' ? '' : Number(e.target.value))
+                    setEditAssigneeId(
+                      e.target.value === '' ? '' : Number(e.target.value)
+                    )
                   }
                 >
                   <option value="">— Не назначен —</option>
@@ -744,7 +846,7 @@ function TaskDetailPage() {
                 </select>
               </div>
 
-              {/* ─── ВИДИМОСТЬ ─────────────────────────── */}
+              {/* ─── ВИДИМОСТЬ ─── */}
               <div className="mb-3">
                 <label className="form-label">Видимость задачи</label>
                 <select
@@ -762,14 +864,18 @@ function TaskDetailPage() {
                   <option value="group">👥 Только участники группы</option>
                 </select>
                 <small className="text-muted d-block mt-1">
-                  {editVisibility === 'public' && 'Задачу видят все участники пространства.'}
-                  {editVisibility === 'private' && 'Задачу видят только вы и назначенный исполнитель.'}
-                  {editVisibility === 'users' && 'Выберите, кто именно увидит эту задачу.'}
-                  {editVisibility === 'group' && 'Задачу видят только участники выбранной группы.'}
+                  {editVisibility === 'public' &&
+                    'Задачу видят все участники пространства.'}
+                  {editVisibility === 'private' &&
+                    'Задачу видят только вы и назначенный исполнитель.'}
+                  {editVisibility === 'users' &&
+                    'Выберите, кто именно увидит эту задачу.'}
+                  {editVisibility === 'group' &&
+                    'Задачу видят только участники выбранной группы.'}
                 </small>
               </div>
 
-              {/* ─── Выбор пользователей ─────────────── */}
+              {/* ─── Выбор пользователей ─── */}
               {editVisibility === 'users' && (
                 <div className="mb-3 kb-fade-in">
                   <label className="form-label">
@@ -789,7 +895,11 @@ function TaskDetailPage() {
                       <label
                         key={m.id}
                         className="d-flex align-items-center gap-2 mb-1"
-                        style={{ padding: '6px 10px', borderRadius: 6, cursor: 'pointer' }}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          cursor: 'pointer',
+                        }}
                       >
                         <input
                           type="checkbox"
@@ -799,7 +909,9 @@ function TaskDetailPage() {
                         <span>
                           {m.user.username}
                           {m.role === 'manager' && (
-                            <span className="badge bg-danger ms-2">менеджер</span>
+                            <span className="badge bg-danger ms-2">
+                              менеджер
+                            </span>
                           )}
                         </span>
                       </label>
@@ -811,7 +923,7 @@ function TaskDetailPage() {
                 </div>
               )}
 
-              {/* ─── Выбор группы ─────────────────────── */}
+              {/* ─── Выбор группы ─── */}
               {editVisibility === 'group' && (
                 <div className="mb-3 kb-fade-in">
                   <label className="form-label">Группа *</label>
@@ -819,7 +931,9 @@ function TaskDetailPage() {
                     className="form-select"
                     value={editGroupId}
                     onChange={(e) =>
-                      setEditGroupId(e.target.value ? Number(e.target.value) : '')
+                      setEditGroupId(
+                        e.target.value ? Number(e.target.value) : ''
+                      )
                     }
                   >
                     <option value="">— Выберите группу —</option>
@@ -858,7 +972,7 @@ function TaskDetailPage() {
         </div>
       )}
 
-      {/* ═══ МОДАЛКА УДАЛЕНИЯ — ВНЕ edit-модалки ═══ */}
+      {/* ═══ МОДАЛКА УДАЛЕНИЯ ═══ */}
       {task && (
         <ConfirmDeleteModal
           show={showDeleteModal}

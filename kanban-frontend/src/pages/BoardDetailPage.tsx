@@ -26,8 +26,6 @@ function BoardDetailPage() {
   const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [sortBy, setSortBy] = useState('order');
-
-  // Мобильное сворачивание фильтров
   const [showFilters, setShowFilters] = useState(false);
 
   const [allUsers, setAllUsers] = useState<{ id: number; username: string }[]>([]);
@@ -35,7 +33,6 @@ function BoardDetailPage() {
   // Модалки
   const [showModal, setShowModal] = useState(false);
   const [selectedColumnId, setSelectedColumnId] = useState<number | null>(null);
-
   const [showColumnModal, setShowColumnModal] = useState(false);
   const [newColumnName, setNewColumnName] = useState('');
 
@@ -97,6 +94,7 @@ function BoardDetailPage() {
     }
   };
 
+  // ─── Drag-and-drop ──────────────────────────────
   const onDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
     const { source, destination, draggableId } = result;
@@ -127,6 +125,7 @@ function BoardDetailPage() {
         column_id: destColId,
         order: destination.index,
       });
+      toast.success('Задача перемещена', { autoClose: 1500 });
     } catch (err) {
       console.error('Не удалось переместить задачу:', err);
       toast.error('Не удалось переместить задачу');
@@ -134,13 +133,15 @@ function BoardDetailPage() {
     }
   };
 
-  // ─── Быстрое перемещение ─────────────────────
+  // ─── Быстрое перемещение кнопками ───────────────
   const moveTaskToColumn = async (taskId: number, toColumnId: number) => {
     try {
       await api.post(`tasks/${taskId}/move/`, {
         column_id: toColumnId,
         order: 0,
       });
+      const colName = columns.find((c) => c.id === toColumnId)?.name || '';
+      toast.success(`Задача перенесена в «${colName}»`, { autoClose: 1500 });
       loadBoard();
     } catch (err: any) {
       console.error('Ошибка перемещения:', err);
@@ -148,7 +149,7 @@ function BoardDetailPage() {
     }
   };
 
-  // ─── Быстрое удаление через кастомную модалку ─────
+  // ─── Удаление задачи ────────────────────────────
   const deleteTask = async (taskId: number, title: string) => {
     const ok = await confirm({
       title: '🗑 Удаление задачи',
@@ -421,7 +422,9 @@ function BoardDetailPage() {
                                 {...provided.dragHandleProps}
                                 className={`kb-task-card kb-task-priority-${
                                   task.priority
-                                } ${snapshot.isDragging ? 'is-dragging' : ''}`}
+                                } ${
+                                  snapshot.isDragging ? 'is-dragging' : ''
+                                }`}
                                 style={provided.draggableProps.style}
                               >
                                 <div className="d-flex justify-content-between align-items-start">
@@ -434,15 +437,27 @@ function BoardDetailPage() {
                                   >
                                     {task.title}
                                     {task.visibility === 'private' && (
-                                      <span className="ms-1" title="Только автор и исполнитель">🔒</span>
+                                      <span
+                                        className="ms-1"
+                                        title="Только автор и исполнитель"
+                                      >
+                                        🔒
+                                      </span>
                                     )}
                                     {task.visibility === 'users' && (
-                                      <span className="ms-1" title="Выбранные пользователи">👤</span>
+                                      <span
+                                        className="ms-1"
+                                        title="Выбранные пользователи"
+                                      >
+                                        👤
+                                      </span>
                                     )}
                                     {task.visibility === 'group' && (
                                       <span
                                         className="ms-1"
-                                        title={`Группа: ${task.group_name || '—'}`}
+                                        title={`Группа: ${
+                                          task.group_name || '—'
+                                        }`}
                                       >
                                         👥
                                       </span>
@@ -570,6 +585,7 @@ function BoardDetailPage() {
           workspaceId={board.workspace}
           onSuccess={() => {
             setShowModal(false);
+            toast.success('Задача создана');
             loadBoard();
           }}
         />

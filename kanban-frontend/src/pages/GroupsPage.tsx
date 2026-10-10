@@ -10,11 +10,13 @@ import type {
   Paginated,
 } from '../types';
 import { useWorkspaceRole } from '../hooks/useWorkspaceRole';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 function GroupsPage() {
   const { id } = useParams<{ id: string }>();
   const workspaceId = id ? Number(id) : null;
   const { isManager } = useWorkspaceRole(workspaceId);
+  const { confirm } = useConfirm();
 
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [groups, setGroups] = useState<TaskGroup[]>([]);
@@ -57,6 +59,7 @@ function GroupsPage() {
     }
   };
 
+  // ─── Создание группы ────────────────────────────
   const createGroup = async (e: FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || !workspaceId) return;
@@ -64,36 +67,51 @@ function GroupsPage() {
     try {
       await api.post('groups/', {
         workspace: workspaceId,
-        name: newName,
+        name: newName.trim(),
         description: newDescription,
       });
-      toast.success('Группа создана');
+      toast.success(`Группа «${newName.trim()}» создана`);
       setNewName('');
       setNewDescription('');
       setShowCreate(false);
       loadAll();
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Ошибка создания');
+      toast.error(
+        err.response?.data?.detail ||
+          JSON.stringify(err.response?.data) ||
+          'Ошибка создания группы'
+      );
     } finally {
       setCreating(false);
     }
   };
 
+  // ─── Удаление группы ────────────────────────────
   const deleteGroup = async (groupId: number, name: string) => {
-    if (!window.confirm(`Удалить группу «${name}»?`)) return;
+    const ok = await confirm({
+      title: '🗑 Удаление группы',
+      message: `Удалить группу «${name}»?\n\nЗадачи, привязанные к этой группе, станут невидимыми для её участников.`,
+      confirmText: 'Удалить',
+      cancelText: 'Отмена',
+      variant: 'danger',
+    });
+    if (!ok) return;
+
     try {
       await api.delete(`groups/${groupId}/`);
-      toast.success('Группа удалена');
+      toast.success(`Группа «${name}» удалена`);
       loadAll();
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Ошибка удаления');
+      toast.error(err.response?.data?.detail || 'Ошибка удаления группы');
     }
   };
 
+  // ─── Управление участниками группы ──────────────
   const addMember = async (groupId: number, userId: number) => {
     try {
       await api.post(`groups/${groupId}/add_member/`, { user_id: userId });
-      toast.success('Участник добавлен');
+      const u = members.find((m) => m.user.id === userId);
+      toast.success(`${u?.user.username || 'Участник'} добавлен в группу`);
       const res = await api.get<TaskGroup>(`groups/${groupId}/`);
       setManageGroup(res.data);
       loadAll();
@@ -102,10 +120,14 @@ function GroupsPage() {
     }
   };
 
-  const removeMember = async (groupId: number, userId: number) => {
+  const removeMember = async (
+    groupId: number,
+    userId: number,
+    username: string
+  ) => {
     try {
       await api.delete(`groups/${groupId}/remove_member/?user_id=${userId}`);
-      toast.success('Участник удалён');
+      toast.success(`${username} удалён из группы`);
       const res = await api.get<TaskGroup>(`groups/${groupId}/`);
       setManageGroup(res.data);
       loadAll();
@@ -115,11 +137,16 @@ function GroupsPage() {
   };
 
   if (loading) {
-    return <div className="kb-loading"><span>Загрузка групп...</span></div>;
+    return (
+      <div className="kb-loading">
+        <span>Загрузка групп...</span>
+      </div>
+    );
   }
 
   return (
     <div className="kb-fade-in">
+      {/* Заголовок */}
       <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <div>
           <h2 className="mb-0">👥 Группы</h2>
@@ -145,6 +172,7 @@ function GroupsPage() {
         </div>
       </div>
 
+      {/* Пустое состояние */}
       {groups.length === 0 ? (
         <div className="kb-card p-5 text-center">
           <div style={{ fontSize: 48, marginBottom: 16 }}>👥</div>
@@ -202,7 +230,7 @@ function GroupsPage() {
         </div>
       )}
 
-      {/* Модалка создания */}
+      {/* ─── Модалка создания группы ─── */}
       {showCreate && (
         <div
           className="kb-modal-backdrop"
@@ -217,6 +245,7 @@ function GroupsPage() {
               <button
                 className="btn-close"
                 onClick={() => setShowCreate(false)}
+                disabled={creating}
               ></button>
             </div>
             <form onSubmit={createGroup}>
@@ -266,7 +295,7 @@ function GroupsPage() {
         </div>
       )}
 
-      {/* Модалка управления участниками группы */}
+      {/* ─── Модалка управления участниками группы ─── */}
       {manageGroup && (
         <div
           className="kb-modal-backdrop"
@@ -278,9 +307,7 @@ function GroupsPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="kb-modal-header">
-              <h5 className="kb-modal-title">
-                👥 {manageGroup.name}
-              </h5>
+              <h5 className="kb-modal-title">👥 {manageGroup.name}</h5>
               <button
                 className="btn-close"
                 onClick={() => setManageGroup(null)}
@@ -307,7 +334,13 @@ function GroupsPage() {
                       </span>
                       <button
                         className="btn btn-sm btn-outline-danger"
-                        onClick={() => removeMember(manageGroup.id, m.user.id)}
+                        onClick={() =>
+                          removeMember(
+                            manageGroup.id,
+                            m.user.id,
+                            m.user.username
+                          )
+                        }
                       >
                         ✕
                       </button>

@@ -1127,3 +1127,43 @@ html, body {
     width: 100%;
   }
 }
+
+.Toastify__toast {
+  border-radius: 10px !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 0.9rem !important;
+  box-shadow: 0 10px 25px -3px rgba(99, 102, 241, 0.25) !important;
+}
+
+.Toastify__toast--success {
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  color: white !important;
+}
+
+.Toastify__toast--error {
+  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+  color: white !important;
+}
+
+.Toastify__toast--warning {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  color: white !important;
+}
+
+.Toastify__toast--info {
+  background: linear-gradient(135deg, #6366f1, #4f46e5) !important;
+  color: white !important;
+}
+
+.Toastify__progress-bar {
+  background: rgba(255, 255, 255, 0.5) !important;
+}
+
+.Toastify__close-button {
+  color: white !important;
+  opacity: 0.8;
+}
+
+.Toastify__close-button:hover {
+  opacity: 1;
+}
