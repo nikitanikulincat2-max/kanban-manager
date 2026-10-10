@@ -105,13 +105,20 @@ class TaskSerializer(serializers.ModelSerializer):
         source='comments.count', read_only=True
     )
 
-    # ─── НОВЫЕ ПОЛЯ ─────────────────────────────
     group = serializers.PrimaryKeyRelatedField(
         queryset=TaskGroup.objects.all(),
         allow_null=True,
         required=False,
     )
     group_name = serializers.CharField(source='group.name', read_only=True)
+    visible_to_users = UserSerializer(many=True, read_only=True)
+    visible_to_users_ids = serializers.PrimaryKeyRelatedField(
+        source='visible_to_users',
+        queryset=User.objects.all(),
+        many=True,
+        required=False,
+        write_only=True,
+    )
 
     class Meta:
         model = Task
@@ -120,16 +127,25 @@ class TaskSerializer(serializers.ModelSerializer):
             'assignee', 'assignee_id',
             'created_by', 'due_date', 'priority', 'order',
             'created_at', 'updated_at', 'labels', 'comments_count',
-            'visibility', 'group', 'group_name',      # ← добавили
+            'visibility', 'group', 'group_name',
+            'visible_to_users', 'visible_to_users_ids',
         ]
 
     def validate(self, data):
-        visibility = data.get('visibility', self.instance.visibility if self.instance else 'public')
+        visibility = data.get(
+            'visibility',
+            self.instance.visibility if self.instance else 'public',
+        )
         group = data.get('group', self.instance.group if self.instance else None)
+        users = data.get('visible_to_users', None)
 
         if visibility == 'group' and not group:
             raise serializers.ValidationError(
                 'Для видимости «группа» нужно выбрать группу'
+            )
+        if visibility == 'users' and not users:
+            raise serializers.ValidationError(
+                'Выберите хотя бы одного пользователя'
             )
         return data
 

@@ -127,6 +127,7 @@ class Task(models.Model):
     VISIBILITY_CHOICES = [
         ('public', 'Все участники пространства'),
         ('private', 'Только автор и исполнитель'),
+        ('users', 'Только выбранные пользователи'),
         ('group', 'Только участники группы'),
     ]
     column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='tasks')
@@ -155,6 +156,13 @@ class Task(models.Model):
         blank=True,
         related_name='tasks',
         help_text='Группа, если visibility=group',
+    )
+
+    visible_to_users = models.ManyToManyField(
+        User,
+        blank=True,
+        related_name='visible_tasks',
+        help_text='Пользователи, которые видят задачу при visibility=users',
     )
 
     class Meta:

@@ -496,11 +496,27 @@ class CommentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsWorkspaceMember]
 
     def get_queryset(self):
-        if self.request.user.is_superuser:
-            return Comment.objects.all().distinct()
-        return Comment.objects.filter(
-            task__column__board__workspace__memberships__user=self.request.user
+        from django.db.models import Q
+
+        user = self.request.user
+
+        if user.is_superuser:
+            base_qs = Task.objects.all()
+        else:
+            base_qs = Task.objects.filter(
+                column__board__workspace__memberships__user=user
+            )
+
+        visible_qs = base_qs.filter(
+            Q(visibility='public') |
+            Q(visibility='private', created_by=user) |
+            Q(visibility='private', assignee=user) |
+            Q(visibility='users', visible_to_users=user) |
+            Q(visibility='group', group__memberships__user=user) |
+            Q(created_by=user)
         ).distinct()
+
+        return visible_qs
 
     def perform_create(self, serializer):
         comment = serializer.save(author=self.request.user)
