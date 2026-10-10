@@ -406,11 +406,9 @@ class TaskViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
-        """Обновлять задачу может только автор, исполнитель, менеджер или суперюзер."""
         task = self.get_object()
         user = self.request.user
 
-        # Проверка прав на редактирование
         if not user.is_superuser:
             workspace = task.column.board.workspace
             is_manager = workspace.memberships.filter(
@@ -421,31 +419,116 @@ class TaskViewSet(viewsets.ModelViewSet):
 
             if not (is_manager or is_author or is_assignee):
                 raise PermissionDenied(
-                    'Редактировать задачу может только её автор, исполнитель или менеджер пространства'
+                    'Редактировать задачу может только её автор, '
+                    'исполнитель или менеджер пространства'
                 )
 
-        old_data = {
-            'column': task.column_id,
-            'assignee': task.assignee_id,
-            'priority': task.priority,
-            'due_date': task.due_date,
-        }
-        updated = serializer.save()
+        PRIORITY_LABELS = {'low': 'Низкий', 'medium': 'Средний', 'high': 'Высокий'}
 
-        # Логирование
-        if old_data['column'] != updated.column_id:
+        old_data = {
+            'title': task.title,
+            'description': task.description or '',
+            'column_id': task.column_id,
+            'column_name': task.column.name,
+            'assignee_id': task.assignee_id,
+            'assignee_username': task.assignee.username if task.assignee else None,
+            'priority': task.priority,
+            'due_date': str(task.due_date) if task.due_date else None,
+            'visibility': task.visibility,
+            'visibility_display': task.get_visibility_display(),
+            'group_id': task.group_id,
+            'group_name': task.group.name if task.group else None,
+            'visible_users': set(task.visible_to_users.values_list('id', flat=True)),
+        }
+
+        updated = serializer.save()
+        if old_data['column_id'] != updated.column_id:
             TaskHistory.objects.create(
                 task=updated, user=user,
-                field_name='column',
-                old_value=str(old_data['column']),
-                new_value=str(updated.column_id),
+                field_name='Колонка',
+                old_value=old_data['column_name'],
+                new_value=updated.column.name,
             )
-        if old_data['assignee'] != updated.assignee_id:
+
+        new_assignee_name = updated.assignee.username if updated.assignee else 'Не назначен'
+        old_assignee_name = old_data['assignee_username'] or 'Не назначен'
+        if old_data['assignee_id'] != updated.assignee_id:
             TaskHistory.objects.create(
                 task=updated, user=user,
-                field_name='assignee',
-                old_value=str(old_data['assignee']),
-                new_value=str(updated.assignee_id),
+                field_name='Исполнитель',
+                old_value=old_assignee_name,
+                new_value=new_assignee_name,
+            )
+
+        if old_data['priority'] != updated.priority:
+            TaskHistory.objects.create(
+                task=updated, user=user,
+                field_name='Приоритет',
+                old_value=PRIORITY_LABELS.get(old_data['priority'], old_data['priority']),
+                new_value=PRIORITY_LABELS.get(updated.priority, updated.priority),
+            )
+
+        new_due = str(updated.due_date) if updated.due_date else None
+        if old_data['due_date'] != new_due:
+            TaskHistory.objects.create(
+                task=updated, user=user,
+                field_name='Срок',
+                old_value=old_data['due_date'] or 'Не задан',
+                new_value=new_due or 'Не задан',
+            )
+
+        if old_data['visibility'] != updated.visibility:
+            TaskHistory.objects.create(
+                task=updated, user=user,
+                field_name='Видимость',
+                old_value=old_data['visibility_display'],
+                new_value=updated.get_visibility_display(),
+            )
+
+        new_group_name = updated.group.name if updated.group else None
+        if old_data['group_id'] != updated.group_id:
+            TaskHistory.objects.create(
+                task=updated, user=user,
+                field_name='Группа',
+                old_value=old_data['group_name'] or 'Не задана',
+                new_value=new_group_name or 'Не задана',
+            )
+
+        new_visible_users = set(updated.visible_to_users.values_list('id', flat=True))
+        if old_data['visible_users'] != new_visible_users:
+            from django.contrib.auth.models import User as UserModel
+
+            def names(ids_set):
+                if not ids_set:
+                    return 'Не выбраны'
+                names_list = list(
+                    UserModel.objects.filter(id__in=ids_set).values_list('username', flat=True)
+                )
+                shown = ', '.join(names_list[:3])
+                suffix = f' и ещё {len(names_list) - 3}' if len(names_list) > 3 else ''
+                return f'{len(names_list)} чел.: {shown}{suffix}'
+
+            TaskHistory.objects.create(
+                task=updated, user=user,
+                field_name='Видимые пользователи',
+                old_value=names(old_data['visible_users']),
+                new_value=names(new_visible_users),
+            )
+
+        if old_data['title'] != updated.title:
+            TaskHistory.objects.create(
+                task=updated, user=user,
+                field_name='Название',
+                old_value=old_data['title'],
+                new_value=updated.title,
+            )
+
+        if old_data['description'] != (updated.description or ''):
+            TaskHistory.objects.create(
+                task=updated, user=user,
+                field_name='Описание',
+                old_value='было',
+                new_value='изменено',
             )
 
     def perform_destroy(self, instance):
@@ -485,9 +568,9 @@ class TaskViewSet(viewsets.ModelViewSet):
 
         TaskHistory.objects.create(
             task=task, user=request.user,
-            field_name='column',
-            old_value=str(old_column.id),
-            new_value=str(new_column.id),
+            field_name='Колонка',
+            old_value=old_column.name,
+            new_value=new_column.name,
         )
         return Response(TaskDetailSerializer(task).data)
 
@@ -519,15 +602,16 @@ class CommentViewSet(viewsets.ModelViewSet):
         return visible_qs
 
     def perform_create(self, serializer):
-        comment = serializer.save(author=self.request.user)
-        preview = comment.text[:80] + '…' if len(comment.text) > 80 else comment.text
-        TaskHistory.objects.create(
-            task=comment.task,
-            user=self.request.user,
-            field_name='Комментарий',
-            old_value=None,
-            new_value=f'добавлен: «{preview}»',
-        )
+        column_id = self.request.data.get('column')
+        column = Column.objects.get(id=column_id)
+
+        if not self.request.user.is_superuser:
+            is_member = column.board.workspace.memberships.filter(
+                user=self.request.user
+            ).exists()
+            if not is_member:
+                raise PermissionDenied('Нет доступа к пространству')
+        serializer.save(created_by=self.request.user, column=column)
 
     def perform_destroy(self, instance):
         if self.request.user.is_superuser:
