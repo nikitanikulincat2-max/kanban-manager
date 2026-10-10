@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import type { FormEvent, ChangeEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import type { FormEvent } from 'react';
 import { toast } from 'react-toastify';
 import api from '../api/axiosConfig';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-import { useConfirm } from '../contexts/ConfirmContext';
+import { useAuth } from '../contexts/AuthContext';
 import type {
   Task,
   Comment,
@@ -12,6 +12,9 @@ import type {
   Attachment,
   Workspace,
   WorkspaceMembership,
+  TaskGroup,
+  Paginated,
+  VisibilityType,
 } from '../types';
 
 interface TaskFull extends Task {
@@ -23,7 +26,7 @@ interface TaskFull extends Task {
 function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { confirm } = useConfirm();
+  const { user } = useAuth();
 
   const [task, setTask] = useState<TaskFull | null>(null);
   const [commentText, setCommentText] = useState('');
@@ -33,13 +36,21 @@ function TaskDetailPage() {
   const [uploadError, setUploadError] = useState('');
   const [showEdit, setShowEdit] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  // Поля формы редактирования
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editPriority, setEditPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [editDueDate, setEditDueDate] = useState('');
   const [editAssigneeId, setEditAssigneeId] = useState<number | ''>('');
+
+  const [editVisibility, setEditVisibility] = useState<VisibilityType>('public');
+  const [editGroupId, setEditGroupId] = useState<number | ''>('');
+  const [editSelectedUserIds, setEditSelectedUserIds] = useState<number[]>([]);
+
   const [saving, setSaving] = useState(false);
   const [members, setMembers] = useState<WorkspaceMembership[]>([]);
+  const [groups, setGroups] = useState<TaskGroup[]>([]);
 
   useEffect(() => {
     loadTask();
@@ -57,12 +68,19 @@ function TaskDetailPage() {
     }
   };
 
-  const loadMembers = async (workspaceId: number) => {
+  const loadMembersAndGroups = async (wsId: number) => {
     try {
-      const res = await api.get<Workspace>(`workspaces/${workspaceId}/`);
-      setMembers(res.data.memberships || []);
-    } catch {
+      const [wsRes, gRes] = await Promise.all([
+        api.get<Workspace>(`workspaces/${wsId}/`),
+        api.get<Paginated<TaskGroup> | TaskGroup[]>(`groups/?workspace=${wsId}`),
+      ]);
+      setMembers(wsRes.data.memberships || []);
+      const list = Array.isArray(gRes.data) ? gRes.data : gRes.data.results;
+      setGroups(list);
+    } catch (err) {
+      console.error('Не удалось загрузить участников/группы', err);
       setMembers([]);
+      setGroups([]);
     }
   };
 
@@ -80,63 +98,82 @@ function TaskDetailPage() {
   };
 
   const deleteTask = async () => {
-    const ok = await confirm({
-      title: '🗑 Удаление задачи',
-      message: `Удалить задачу «${task?.title || ''}»?\n\nЭто действие нельзя отменить.`,
-      confirmText: 'Удалить',
-      cancelText: 'Отмена',
-      variant: 'danger',
-    });
-
-    if (!ok) return;
-
     setDeleting(true);
     try {
       await api.delete(`tasks/${id}/`);
+      toast.success('Задача удалена');
       navigate(-1);
-    } catch {
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Не удалось удалить задачу');
       setDeleting(false);
     }
   };
 
   const openEdit = async () => {
     if (!task) return;
+
     setEditTitle(task.title);
     setEditDescription(task.description || '');
     setEditPriority(task.priority);
     setEditDueDate(task.due_date || '');
     setEditAssigneeId(task.assignee?.id || '');
+
+    setEditVisibility(task.visibility || 'public');
+    setEditGroupId(task.group || '');
+    setEditSelectedUserIds(
+      task.visible_to_users?.map((u) => u.id) || []
+    );
+
     setShowEdit(true);
 
-    // Загружаем участников пространства
+    // Загружаем участников и группы пространства
     try {
       const colRes = await api.get(`columns/${task.column}/`);
       const boardRes = await api.get(`boards/${colRes.data.board}/`);
-      await loadMembers(boardRes.data.workspace);
+      const wsId = boardRes.data.workspace;
+      await loadMembersAndGroups(wsId);
     } catch (err) {
-      console.error('Не удалось загрузить участников', err);
+      console.error('Не удалось загрузить данные пространства', err);
     }
   };
 
+  const toggleEditUser = (userId: number) => {
+    setEditSelectedUserIds((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId]
+    );
+  };
+
+  // ─── Сохранить задачу ───────────────────────────
   const saveTask = async () => {
     if (!task) return;
+
     if (!editTitle.trim()) {
       toast.warn('Введите название задачи');
       return;
     }
+    if (editVisibility === 'group' && !editGroupId) {
+      toast.warn('Выберите группу');
+      return;
+    }
+    if (editVisibility === 'users' && editSelectedUserIds.length === 0) {
+      toast.warn('Выберите хотя бы одного пользователя');
+      return;
+    }
 
     setSaving(true);
+
     const payload: any = {
       title: editTitle,
       description: editDescription,
       priority: editPriority,
       due_date: editDueDate || null,
+      assignee_id: editAssigneeId === '' ? null : editAssigneeId,
+      visibility: editVisibility,
+      group: editVisibility === 'group' ? editGroupId : null,
+      visible_to_users_ids: editVisibility === 'users' ? editSelectedUserIds : [],
     };
-    if (editAssigneeId === '') {
-      payload.assignee_id = null;
-    } else {
-      payload.assignee_id = editAssigneeId;
-    }
 
     try {
       await api.patch(`tasks/${id}/`, payload);
@@ -144,20 +181,24 @@ function TaskDetailPage() {
       toast.success('Задача обновлена');
       loadTask();
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Не удалось сохранить изменения');
+      const data = err.response?.data;
+      const msg =
+        data?.detail ||
+        (data && typeof data === 'object'
+          ? Object.values(data).flat().join(', ')
+          : null) ||
+        'Не удалось сохранить изменения';
+      toast.error(String(msg));
     } finally {
       setSaving(false);
     }
   };
 
-  // ────────────────────────────────────────────────
-  // Загрузка файла
-  // ────────────────────────────────────────────────
-  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+  // ─── Загрузка файла ─────────────────────────────
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Проверка размера
     if (file.size > 10 * 1024 * 1024) {
       setUploadError('Файл не должен превышать 10 МБ');
       toast.error('Файл не должен превышать 10 МБ');
@@ -165,7 +206,6 @@ function TaskDetailPage() {
       return;
     }
 
-    // Проверка расширения
     const allowedExtensions = [
       'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp',
       'zip', 'rar', '7z', 'doc', 'docx', 'xls', 'xlsx',
@@ -204,9 +244,6 @@ function TaskDetailPage() {
     }
   };
 
-  // ────────────────────────────────────────────────
-  // Удаление файла
-  // ────────────────────────────────────────────────
   const deleteAttachment = async (attachmentId: number, fileName: string) => {
     if (!window.confirm(`Удалить файл «${fileName}»?`)) return;
     try {
@@ -218,9 +255,6 @@ function TaskDetailPage() {
     }
   };
 
-  // ────────────────────────────────────────────────
-  // Утилиты
-  // ────────────────────────────────────────────────
   const getFileIcon = (fileName: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase();
     if (ext === 'pdf') return '📄';
@@ -230,6 +264,15 @@ function TaskDetailPage() {
     if (['xls', 'xlsx'].includes(ext || '')) return '📊';
     return '📎';
   };
+
+  // Проверка прав на редактирование
+  const canEdit = (() => {
+    if (!task || !user) return false;
+    if (user.is_superuser) return true;
+    if (task.created_by?.id === user.id) return true;
+    if (task.assignee?.id === user.id) return true;
+    return false;
+  })();
 
   if (loading) return <div className="kb-loading"><span>Загрузка задачи...</span></div>;
   if (!task) return <div className="alert alert-danger mt-5">Задача не найдена</div>;
@@ -245,41 +288,69 @@ function TaskDetailPage() {
     low: 'secondary',
   };
 
+  const visibilityIcon = {
+    public: '🌐',
+    private: '🔒',
+    users: '👤',
+    group: '👥',
+  };
+
   return (
     <div className="row">
-      {/* ═══ Левая колонка ═══ */}
+      {/* ═══ ЛЕВАЯ КОЛОНКА ═══ */}
       <div className="col-lg-8">
         {/* Заголовок */}
         <div className="d-flex justify-content-between align-items-start mb-4 kb-fade-in gap-3">
-          <h1 className="mb-0" style={{ fontWeight: 700, fontSize: '2rem' }}>
-            {task.title}
-          </h1>
+          <div>
+            <h1 className="mb-0" style={{ fontWeight: 700, fontSize: '2rem' }}>
+              {task.title}
+            </h1>
+            <div className="mt-2">
+              <span
+                className="badge bg-light text-dark"
+                title={
+                  task.visibility === 'public' ? 'Все участники' :
+                  task.visibility === 'private' ? 'Только автор и исполнитель' :
+                  task.visibility === 'users' ? 'Выбранные пользователи' :
+                  `Группа: ${task.group_name || ''}`
+                }
+              >
+                {visibilityIcon[task.visibility]} {
+                  task.visibility === 'public' ? 'Все' :
+                  task.visibility === 'private' ? 'Приватная' :
+                  task.visibility === 'users' ? `Пользователи (${task.visible_to_users?.length || 0})` :
+                  `Группа: ${task.group_name || ''}`
+                }
+              </span>
+            </div>
+          </div>
           <div className="d-flex gap-2">
-            <button
-              className="btn btn-outline-primary btn-sm"
-              onClick={openEdit}
-              style={{ whiteSpace: 'nowrap', marginTop: 6 }}
-            >
-              ✏️ Редактировать
-            </button>
-            <button
-            className="btn btn-outline-danger btn-sm"
-            onClick={() => setShowDeleteModal(true)}
-            disabled={deleting}
-            style={{ whiteSpace: 'nowrap', marginTop: 6 }}
-          >
-            {deleting ? 'Удаление...' : '🗑 Удалить'}
-          </button>
+            {canEdit && (
+              <button
+                className="btn btn-outline-primary btn-sm"
+                onClick={openEdit}
+                style={{ whiteSpace: 'nowrap', marginTop: 6 }}
+              >
+                ✏️ Редактировать
+              </button>
+            )}
+            {canEdit && (
+              <button
+                className="btn btn-outline-danger btn-sm"
+                onClick={() => setShowDeleteModal(true)}
+                disabled={deleting}
+                style={{ whiteSpace: 'nowrap', marginTop: 6 }}
+              >
+                {deleting ? 'Удаление...' : '🗑 Удалить'}
+              </button>
+            )}
           </div>
         </div>
 
         {/* Описание */}
         <div className="kb-card mb-4 kb-slide-up">
           <div style={{ padding: '28px 32px' }}>
-            <h6
-              className="text-muted mb-3 small text-uppercase"
-              style={{ letterSpacing: '0.05em', fontWeight: 600 }}
-            >
+            <h6 className="text-muted mb-3 small text-uppercase" style={{ letterSpacing: '0.05em', fontWeight: 600 }}>
               Описание
             </h6>
             <p className="mb-0" style={{ fontSize: '1.05rem', lineHeight: 1.7 }}>
@@ -293,10 +364,7 @@ function TaskDetailPage() {
         {/* Детали */}
         <div className="kb-card mb-4 kb-slide-up kb-delay-1">
           <div style={{ padding: '28px 32px' }}>
-            <h6
-              className="text-muted mb-3 small text-uppercase"
-              style={{ letterSpacing: '0.05em', fontWeight: 600 }}
-            >
+            <h6 className="text-muted mb-3 small text-uppercase" style={{ letterSpacing: '0.05em', fontWeight: 600 }}>
               Детали
             </h6>
 
@@ -319,13 +387,7 @@ function TaskDetailPage() {
                   <span className="text-muted d-flex align-items-center" style={{ minWidth: 145 }}>
                     <span style={{ marginRight: 10 }}>📅</span>Срок
                   </span>
-                  <span
-                    className={
-                      task.due_date && new Date(task.due_date) < new Date()
-                        ? 'text-danger fw-bold'
-                        : ''
-                    }
-                  >
+                  <span className={task.due_date && new Date(task.due_date) < new Date() ? 'text-danger fw-bold' : ''}>
                     {task.due_date || (
                       <span className="text-muted fst-italic">Не задан</span>
                     )}
@@ -360,10 +422,7 @@ function TaskDetailPage() {
         <div className="kb-card mb-4 kb-slide-up kb-delay-2">
           <div style={{ padding: '28px 32px' }}>
             <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-              <h6
-                className="text-muted mb-0 small text-uppercase"
-                style={{ letterSpacing: '0.05em', fontWeight: 600 }}
-              >
+              <h6 className="text-muted mb-0 small text-uppercase" style={{ letterSpacing: '0.05em', fontWeight: 600 }}>
                 📎 Файлы ({task.attachments?.length || 0})
               </h6>
               <label
@@ -478,14 +537,7 @@ function TaskDetailPage() {
                             {new Date(c.created_at).toLocaleString('ru-RU')}
                           </small>
                         </div>
-                        <p
-                          className="mb-0"
-                          style={{
-                            whiteSpace: 'pre-wrap',
-                            lineHeight: 1.6,
-                            fontSize: '1rem',
-                          }}
-                        >
+                        <p className="mb-0" style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6, fontSize: '1rem' }}>
                           {c.text}
                         </p>
                       </div>
@@ -521,7 +573,7 @@ function TaskDetailPage() {
         </div>
       </div>
 
-      {/* ═══ Правая колонка — история ═══ */}
+      {/* ═══ ПРАВАЯ КОЛОНКА — ИСТОРИЯ ═══ */}
       <div className="col-lg-4">
         <div
           className="kb-card kb-slide-up"
@@ -534,105 +586,73 @@ function TaskDetailPage() {
           }}
         >
           <div style={{ padding: '24px 26px 12px' }}>
-            <h6
-              className="text-muted mb-0 small text-uppercase"
-              style={{ letterSpacing: '0.05em', fontWeight: 600 }}
-            >
+            <h6 className="text-muted mb-0 small text-uppercase" style={{ letterSpacing: '0.05em', fontWeight: 600 }}>
               🕐 История изменений
             </h6>
           </div>
 
           <div
             className="kb-history-scroll"
-            style={{
-              padding: '0 26px 24px',
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              flexGrow: 1,
-            }}
+            style={{ padding: '0 26px 24px', overflowY: 'auto', overflowX: 'hidden', flexGrow: 1 }}
           >
             <ul className="list-unstyled mb-0">
               {task.history.length === 0 ? (
                 <li className="text-muted small">История пуста</li>
               ) : (
-                task.history
-                  .filter((h) => {
-                    const badFields = [
-                      'assignee',
-                      'status',
-                      'column',
-                      'priority',
-                      'due_date',
-                      'title',
-                      'description',
-                    ];
-                    return !badFields.includes(h.field_name);
-                  })
-                  .map((h, i, arr) => (
-                    <li
-                      key={h.id}
-                      className="kb-slide-in-right"
-                      style={{
-                        animationDelay: `${i * 0.05}s`,
-                        paddingBottom: i < arr.length - 1 ? 16 : 0,
-                        marginBottom: i < arr.length - 1 ? 16 : 0,
-                        borderBottom:
-                          i < arr.length - 1
-                            ? '1px solid var(--kb-border)'
-                            : 'none',
-                      }}
-                    >
-                      <div className="small text-muted mb-2">
-                        {new Date(h.changed_at).toLocaleString('ru-RU')}
+                task.history.map((h, i, arr) => (
+                  <li
+                    key={h.id}
+                    className="kb-slide-in-right"
+                    style={{
+                      animationDelay: `${i * 0.05}s`,
+                      paddingBottom: i < arr.length - 1 ? 16 : 0,
+                      marginBottom: i < arr.length - 1 ? 16 : 0,
+                      borderBottom: i < arr.length - 1 ? '1px solid var(--kb-border)' : 'none',
+                    }}
+                  >
+                    <div className="small text-muted mb-2">
+                      {new Date(h.changed_at).toLocaleString('ru-RU')}
+                    </div>
+                    <div className="small" style={{ lineHeight: 1.6 }}>
+                      <strong>{h.user.username}</strong> изменил{' '}
+                      <em className="text-primary">{h.field_name}</em>:
+                      <div className="d-flex align-items-center flex-wrap" style={{ gap: 6, marginTop: 8 }}>
+                        {h.old_value && (
+                          <>
+                            <span className="badge bg-light text-dark">{h.old_value}</span>
+                            {h.new_value && <span className="text-muted">→</span>}
+                          </>
+                        )}
+                        {h.new_value && <span className="badge bg-primary">{h.new_value}</span>}
+                        {!h.old_value && !h.new_value && (
+                          <span className="badge bg-secondary">изменено</span>
+                        )}
                       </div>
-                      <div className="small" style={{ lineHeight: 1.6 }}>
-                        <strong>{h.user.username}</strong> изменил{' '}
-                        <em className="text-primary">{h.field_name}</em>:
-                        <div
-                          className="d-flex align-items-center flex-wrap"
-                          style={{ gap: 6, marginTop: 8 }}
-                        >
-                          {h.old_value && (
-                            <>
-                              <span className="badge bg-light text-dark">
-                                {h.old_value}
-                              </span>
-                              {h.new_value && (
-                                <span className="text-muted">→</span>
-                              )}
-                            </>
-                          )}
-                          {h.new_value && (
-                            <span className="badge bg-primary">{h.new_value}</span>
-                          )}
-                          {!h.old_value && !h.new_value && (
-                            <span className="badge bg-secondary">изменено</span>
-                          )}
-                        </div>
-                      </div>
-                    </li>
-                  ))
+                    </div>
+                  </li>
+                ))
               )}
             </ul>
           </div>
         </div>
       </div>
 
-      {/* ═══ Модалка редактирования ═══ */}
+      {/* ═══ МОДАЛКА РЕДАКТИРОВАНИЯ ═══ */}
       {showEdit && (
-        <div className="kb-modal-backdrop" onClick={() => setShowEdit(false)}>
+        <div className="kb-modal-backdrop" onClick={() => !saving && setShowEdit(false)}>
           <div className="kb-modal-content" onClick={(e) => e.stopPropagation()}>
-
             <div className="kb-modal-header">
               <h5 className="kb-modal-title">✏️ Редактировать задачу</h5>
               <button
                 type="button"
                 className="btn-close"
                 onClick={() => setShowEdit(false)}
+                disabled={saving}
               ></button>
             </div>
 
             <div className="kb-modal-body">
+              {/* Название */}
               <div className="mb-3">
                 <label className="form-label">Название</label>
                 <input
@@ -644,6 +664,7 @@ function TaskDetailPage() {
                 />
               </div>
 
+              {/* Описание */}
               <div className="mb-3">
                 <label className="form-label">Описание</label>
                 <textarea
@@ -654,6 +675,7 @@ function TaskDetailPage() {
                 />
               </div>
 
+              {/* Приоритет + срок */}
               <div className="row">
                 <div className="col-md-6 mb-3">
                   <label className="form-label">Приоритет</label>
@@ -678,15 +700,14 @@ function TaskDetailPage() {
                 </div>
               </div>
 
+              {/* Исполнитель */}
               <div className="mb-3">
                 <label className="form-label">Исполнитель</label>
                 <select
                   className="form-select"
                   value={editAssigneeId}
                   onChange={(e) =>
-                    setEditAssigneeId(
-                      e.target.value === '' ? '' : Number(e.target.value)
-                    )
+                    setEditAssigneeId(e.target.value === '' ? '' : Number(e.target.value))
                   }
                 >
                   <option value="">— Не назначен —</option>
@@ -698,11 +719,106 @@ function TaskDetailPage() {
                   ))}
                 </select>
               </div>
+
+              {/* ─── ВИДИМОСТЬ ─────────────────────────── */}
+              <div className="mb-3">
+                <label className="form-label">Видимость задачи</label>
+                <select
+                  className="form-select"
+                  value={editVisibility}
+                  onChange={(e) => {
+                    setEditVisibility(e.target.value as VisibilityType);
+                    setEditGroupId('');
+                    setEditSelectedUserIds([]);
+                  }}
+                >
+                  <option value="public">🌐 Все участники пространства</option>
+                  <option value="private">🔒 Только автор и исполнитель</option>
+                  <option value="users">👤 Выбранные пользователи</option>
+                  <option value="group">👥 Только участники группы</option>
+                </select>
+                <small className="text-muted d-block mt-1">
+                  {editVisibility === 'public' && 'Задачу видят все участники пространства.'}
+                  {editVisibility === 'private' && 'Задачу видят только вы и назначенный исполнитель.'}
+                  {editVisibility === 'users' && 'Выберите, кто именно увидит эту задачу.'}
+                  {editVisibility === 'group' && 'Задачу видят только участники выбранной группы.'}
+                </small>
+              </div>
+
+              {/* ─── Выбор пользователей ─────────────── */}
+              {editVisibility === 'users' && (
+                <div className="mb-3 kb-fade-in">
+                  <label className="form-label">
+                    Кто увидит задачу ({editSelectedUserIds.length})
+                  </label>
+                  <div
+                    style={{
+                      maxHeight: 220,
+                      overflowY: 'auto',
+                      border: '1px solid var(--kb-border)',
+                      borderRadius: 'var(--kb-radius-sm)',
+                      padding: 8,
+                      background: '#fafafa',
+                    }}
+                  >
+                    {members.map((m) => (
+                      <label
+                        key={m.id}
+                        className="d-flex align-items-center gap-2 mb-1"
+                        style={{ padding: '6px 10px', borderRadius: 6, cursor: 'pointer' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={editSelectedUserIds.includes(m.user.id)}
+                          onChange={() => toggleEditUser(m.user.id)}
+                        />
+                        <span>
+                          {m.user.username}
+                          {m.role === 'manager' && (
+                            <span className="badge bg-danger ms-2">менеджер</span>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                  <small className="text-muted d-block mt-1">
+                    Автор задачи всегда видит её, независимо от выбора.
+                  </small>
+                </div>
+              )}
+
+              {/* ─── Выбор группы ─────────────────────── */}
+              {editVisibility === 'group' && (
+                <div className="mb-3 kb-fade-in">
+                  <label className="form-label">Группа *</label>
+                  <select
+                    className="form-select"
+                    value={editGroupId}
+                    onChange={(e) =>
+                      setEditGroupId(e.target.value ? Number(e.target.value) : '')
+                    }
+                  >
+                    <option value="">— Выберите группу —</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name} ({g.members_count} чел.)
+                      </option>
+                    ))}
+                  </select>
+                  {groups.length === 0 && (
+                    <small className="text-warning d-block mt-1">
+                      Групп пока нет.
+                    </small>
+                  )}
+                </div>
+              )}
             </div>
+
             <div className="kb-modal-footer">
               <button
                 className="btn btn-secondary"
                 onClick={() => setShowEdit(false)}
+                disabled={saving}
               >
                 Отмена
               </button>
@@ -714,12 +830,11 @@ function TaskDetailPage() {
                 {saving ? 'Сохранение...' : 'Сохранить'}
               </button>
             </div>
-
           </div>
         </div>
       )}
 
-      {/* ═══ Модалка удаления — ВНЕ edit-модалки ═══ */}
+      {/* ═══ МОДАЛКА УДАЛЕНИЯ — ВНЕ edit-модалки ═══ */}
       {task && (
         <ConfirmDeleteModal
           show={showDeleteModal}
