@@ -433,6 +433,20 @@ function BoardDetailPage() {
                                     }}
                                   >
                                     {task.title}
+                                    {task.visibility === 'private' && (
+                                      <span className="ms-1" title="Только автор и исполнитель">🔒</span>
+                                    )}
+                                    {task.visibility === 'users' && (
+                                      <span className="ms-1" title="Выбранные пользователи">👤</span>
+                                    )}
+                                    {task.visibility === 'group' && (
+                                      <span
+                                        className="ms-1"
+                                        title={`Группа: ${task.group_name || '—'}`}
+                                      >
+                                        👥
+                                      </span>
+                                    )}
                                   </h6>
                                   <span
                                     className={`badge bg-${

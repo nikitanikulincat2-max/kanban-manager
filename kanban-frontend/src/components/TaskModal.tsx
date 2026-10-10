@@ -25,6 +25,7 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
   const [assigneeId, setAssigneeId] = useState<number | ''>('');
   const [visibility, setVisibility] = useState<VisibilityType>('public');
   const [groupId, setGroupId] = useState<number | ''>('');
+  const [selectedUserIds, setSelectedUserIds] = useState<number[]>([]);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -55,10 +56,19 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
       setAssigneeId('');
       setVisibility('public');
       setGroupId('');
+      setSelectedUserIds([]);
       setError('');
       setSubmitting(false);
     }
   }, [show]);
+
+  const toggleUser = (userId: number) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId]
+    );
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -66,6 +76,10 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
 
     if (visibility === 'group' && !groupId) {
       setError('Выберите группу или измените видимость');
+      return;
+    }
+    if (visibility === 'users' && selectedUserIds.length === 0) {
+      setError('Выберите хотя бы одного пользователя');
       return;
     }
 
@@ -80,6 +94,7 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
         assignee_id: assigneeId || null,
         visibility,
         group: visibility === 'group' ? groupId : null,
+        visible_to_users_ids: visibility === 'users' ? selectedUserIds : [],
       });
       setSubmitting(false);
       onSuccess();
@@ -107,6 +122,7 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
           <div className="kb-modal-body">
             {error && <div className="alert alert-danger kb-fade-in">{error}</div>}
 
+            {/* Заголовок */}
             <div className="mb-3">
               <label className="form-label">Заголовок *</label>
               <input
@@ -120,6 +136,7 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
               />
             </div>
 
+            {/* Описание */}
             <div className="mb-3">
               <label className="form-label">Описание</label>
               <textarea
@@ -130,6 +147,7 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
               />
             </div>
 
+            {/* Приоритет + срок */}
             <div className="row">
               <div className="col-md-6 mb-3">
                 <label className="form-label">Приоритет</label>
@@ -145,7 +163,6 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
                   <option value="high">🟥 Высокий</option>
                 </select>
               </div>
-
               <div className="col-md-6 mb-3">
                 <label className="form-label">Срок</label>
                 <input
@@ -157,6 +174,7 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
               </div>
             </div>
 
+            {/* Исполнитель */}
             <div className="mb-3">
               <label className="form-label">Исполнитель</label>
               <select
@@ -176,7 +194,7 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
               </select>
             </div>
 
-            {/* ─── Видимость ─── */}
+            {/* Видимость */}
             <div className="mb-3">
               <label className="form-label">Видимость задачи</label>
               <select
@@ -184,21 +202,82 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
                 value={visibility}
                 onChange={(e) => {
                   setVisibility(e.target.value as VisibilityType);
-                  if (e.target.value !== 'group') setGroupId('');
+                  setGroupId('');
+                  setSelectedUserIds([]);
                 }}
               >
                 <option value="public">🌐 Все участники пространства</option>
                 <option value="private">🔒 Только автор и исполнитель</option>
+                <option value="users">👤 Выбранные пользователи</option>
                 <option value="group">👥 Только участники группы</option>
               </select>
               <small className="text-muted d-block mt-1">
-                {visibility === 'public' && 'Задачу видят все, кто состоит в пространстве.'}
-                {visibility === 'private' && 'Задачу видите только вы и назначенный исполнитель.'}
+                {visibility === 'public' && 'Задачу видят все участники пространства.'}
+                {visibility === 'private' && 'Задачу видят только вы и назначенный исполнитель.'}
+                {visibility === 'users' && 'Выберите, кто именно увидит эту задачу.'}
                 {visibility === 'group' && 'Задачу видят только участники выбранной группы.'}
               </small>
             </div>
 
-            {/* ─── Выбор группы ─── */}
+            {/* Выбор пользователей */}
+            {visibility === 'users' && (
+              <div className="mb-3 kb-fade-in">
+                <label className="form-label">
+                  Кто увидит задачу ({selectedUserIds.length})
+                </label>
+                <div
+                  style={{
+                    maxHeight: 220,
+                    overflowY: 'auto',
+                    border: '1px solid var(--kb-border)',
+                    borderRadius: 'var(--kb-radius-sm)',
+                    padding: 8,
+                    background: '#fafafa',
+                  }}
+                >
+                  {members.map((m) => (
+                    <label
+                      key={m.id}
+                      className="d-flex align-items-center gap-2 mb-1"
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        transition: 'background 0.15s',
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.background = 'rgba(99,102,241,0.06)')
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.background = 'transparent')
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedUserIds.includes(m.user.id)}
+                        onChange={() => toggleUser(m.user.id)}
+                      />
+                      <span>
+                        {m.user.username}
+                        {m.role === 'manager' && (
+                          <span className="badge bg-danger ms-2">менеджер</span>
+                        )}
+                      </span>
+                    </label>
+                  ))}
+                  {members.length === 0 && (
+                    <p className="text-muted small mb-0 text-center py-2">
+                      Нет участников
+                    </p>
+                  )}
+                </div>
+                <small className="text-muted d-block mt-1">
+                  Автор задачи всегда видит её, независимо от выбора.
+                </small>
+              </div>
+            )}
+
+            {/* Выбор группы */}
             {visibility === 'group' && (
               <div className="mb-3 kb-fade-in">
                 <label className="form-label">Группа *</label>

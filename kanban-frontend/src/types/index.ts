@@ -62,6 +62,8 @@ export interface Task {
   visibility: VisibilityType;
   group: number | null;
   group_name?: string;
+  visible_to_users: User[];      
+  visible_to_users_ids?: number[]; 
 }
 
 export interface Comment {
@@ -98,7 +100,7 @@ export interface Attachment {
   uploaded_at: string;
 }
 
-export type VisibilityType = 'public' | 'private' | 'group';
+export type VisibilityType = 'public' | 'private' | 'users' | 'group';
 
 export interface TaskGroupMembership {
   id: number;
