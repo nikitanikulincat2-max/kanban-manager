@@ -599,38 +599,62 @@ function TaskDetailPage() {
               {task.history.length === 0 ? (
                 <li className="text-muted small">История пуста</li>
               ) : (
-                task.history.map((h, i, arr) => (
-                  <li
-                    key={h.id}
-                    className="kb-slide-in-right"
-                    style={{
-                      animationDelay: `${i * 0.05}s`,
-                      paddingBottom: i < arr.length - 1 ? 16 : 0,
-                      marginBottom: i < arr.length - 1 ? 16 : 0,
-                      borderBottom: i < arr.length - 1 ? '1px solid var(--kb-border)' : 'none',
-                    }}
-                  >
-                    <div className="small text-muted mb-2">
-                      {new Date(h.changed_at).toLocaleString('ru-RU')}
-                    </div>
-                    <div className="small" style={{ lineHeight: 1.6 }}>
-                      <strong>{h.user.username}</strong> изменил{' '}
-                      <em className="text-primary">{h.field_name}</em>:
-                      <div className="d-flex align-items-center flex-wrap" style={{ gap: 6, marginTop: 8 }}>
-                        {h.old_value && (
-                          <>
-                            <span className="badge bg-light text-dark">{h.old_value}</span>
-                            {h.new_value && <span className="text-muted">→</span>}
-                          </>
-                        )}
-                        {h.new_value && <span className="badge bg-primary">{h.new_value}</span>}
-                        {!h.old_value && !h.new_value && (
-                          <span className="badge bg-secondary">изменено</span>
-                        )}
+                task.history
+                  .filter((h) => {
+                    const oldFields = [
+                      'status',
+                      'column',
+                      'assignee',
+                      'priority',
+                      'due_date',
+                      'title',
+                      'description',
+                      'group',
+                      'visibility',
+                    ];
+                    if (oldFields.includes(h.field_name)) return false;
+
+                    if (h.field_name === 'status' && h.new_value === 'created') return false;
+
+                    return true;
+                  })
+                  .map((h, i, arr) => (
+                    <li
+                      key={h.id}
+                      className="kb-slide-in-right"
+                      style={{
+                        animationDelay: `${i * 0.05}s`,
+                        paddingBottom: i < arr.length - 1 ? 16 : 0,
+                        marginBottom: i < arr.length - 1 ? 16 : 0,
+                        borderBottom: i < arr.length - 1 ? '1px solid var(--kb-border)' : 'none',
+                      }}
+                    >
+                      <div className="small text-muted mb-2">
+                        {new Date(h.changed_at).toLocaleString('ru-RU')}
                       </div>
-                    </div>
-                  </li>
-                ))
+                      <div className="small" style={{ lineHeight: 1.6 }}>
+                        <strong>{h.user.username}</strong> изменил{' '}
+                        <em className="text-primary">{h.field_name}</em>:
+                        <div
+                          className="d-flex align-items-center flex-wrap"
+                          style={{ gap: 6, marginTop: 8 }}
+                        >
+                          {h.old_value && (
+                            <>
+                              <span className="badge bg-light text-dark">{h.old_value}</span>
+                              {h.new_value && <span className="text-muted">→</span>}
+                            </>
+                          )}
+                          {h.new_value && (
+                            <span className="badge bg-primary">{h.new_value}</span>
+                          )}
+                          {!h.old_value && !h.new_value && (
+                            <span className="badge bg-secondary">изменено</span>
+                          )}
+                        </div>
+                      </div>
+                    </li>
+                  ))
               )}
             </ul>
           </div>
