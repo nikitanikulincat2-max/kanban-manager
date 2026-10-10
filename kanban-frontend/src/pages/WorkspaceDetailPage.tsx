@@ -104,6 +104,12 @@ function WorkspaceDetailPage() {
               👥 Участники
             </button>
           )}
+          <Link
+              to={`/workspaces/${workspace.id}/groups`}
+              className="btn btn-outline-primary btn-sm"
+            >
+              👥 Группы
+            </Link>
           {isManager && (
             <button
               className="btn btn-outline-danger btn-sm"

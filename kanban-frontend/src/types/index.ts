@@ -59,6 +59,9 @@ export interface Task {
   updated_at: string;
   labels: Label[];
   comments_count: number;
+  visibility: VisibilityType;
+  group: number | null;
+  group_name?: string;
 }
 
 export interface Comment {
@@ -93,4 +96,24 @@ export interface Attachment {
   file_url: string;
   uploaded_by: User;
   uploaded_at: string;
+}
+
+export type VisibilityType = 'public' | 'private' | 'group';
+
+export interface TaskGroupMembership {
+  id: number;
+  user: User;
+  added_at: string;
+}
+
+export interface TaskGroup {
+  id: number;
+  workspace: number;
+  workspace_name?: string;
+  name: string;
+  description: string;
+  created_by: User;
+  created_at: string;
+  memberships: TaskGroupMembership[];
+  members_count: number;
 }

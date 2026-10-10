@@ -13,6 +13,7 @@ import AllTasksPage from './pages/AllTasksPage';
 import DashboardPage from './pages/DashboardPage';
 import ProfilePage from './pages/ProfilePage';
 import NotFoundPage from './pages/NotFoundPage';
+import GroupsPage from './pages/GroupsPage';
 
 function PrivateRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth();
@@ -42,7 +43,14 @@ function AnimatedRoutes() {
         {/* ─── Приватные маршруты ────────────────── */}
         <Route path="/" element={<Layout />}>
           <Route index element={<Navigate to="/workspaces" />} />
-
+          <Route
+            path="workspaces/:id/groups"
+            element={
+              <PrivateRoute>
+                <GroupsPage />
+              </PrivateRoute>
+            }
+          />
           <Route
             path="workspaces"
             element={

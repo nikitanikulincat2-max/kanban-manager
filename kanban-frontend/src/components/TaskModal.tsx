@@ -1,13 +1,19 @@
 import { useState, useEffect } from 'react';
-import type { FormEvent, ChangeEvent } from 'react';
+import type { FormEvent } from 'react';
 import api from '../api/axiosConfig';
-import type { Workspace, WorkspaceMembership } from '../types';
+import type {
+  Workspace,
+  WorkspaceMembership,
+  TaskGroup,
+  Paginated,
+  VisibilityType,
+} from '../types';
 
 interface TaskModalProps {
   show: boolean;
   onHide: () => void;
   columnId: number;
-  workspaceId: number | null;
+  workspaceId: number;
   onSuccess: () => void;
 }
 
@@ -17,81 +23,74 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [dueDate, setDueDate] = useState('');
   const [assigneeId, setAssigneeId] = useState<number | ''>('');
-  const [file, setFile] = useState<File | null>(null);
+  const [visibility, setVisibility] = useState<VisibilityType>('public');
+  const [groupId, setGroupId] = useState<number | ''>('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const [members, setMembers] = useState<WorkspaceMembership[]>([]);
+  const [groups, setGroups] = useState<TaskGroup[]>([]);
 
-  // Загрузка участников пространства
   useEffect(() => {
-    if (!show || !workspaceId) return;
-    api
-      .get<Workspace>(`workspaces/${workspaceId}/`)
-      .then((res) => setMembers(res.data.memberships || []))
-      .catch(() => setMembers([]));
+    if (show && workspaceId) {
+      api.get<Workspace>(`workspaces/${workspaceId}/`)
+        .then((res) => setMembers(res.data.memberships || []))
+        .catch(console.error);
+
+      api.get<Paginated<TaskGroup> | TaskGroup[]>(`groups/?workspace=${workspaceId}`)
+        .then((res) => {
+          const list = Array.isArray(res.data) ? res.data : res.data.results;
+          setGroups(list);
+        })
+        .catch(console.error);
+    }
   }, [show, workspaceId]);
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] || null;
-    if (f && f.size > 10 * 1024 * 1024) {
-      setError('Файл не должен превышать 10 МБ');
-      return;
+  useEffect(() => {
+    if (!show) {
+      setTitle('');
+      setDescription('');
+      setPriority('medium');
+      setDueDate('');
+      setAssigneeId('');
+      setVisibility('public');
+      setGroupId('');
+      setError('');
+      setSubmitting(false);
     }
-    setFile(f);
-    setError('');
-  };
-
-  const resetForm = () => {
-    setTitle('');
-    setDescription('');
-    setPriority('medium');
-    setDueDate('');
-    setAssigneeId('');
-    setFile(null);
-    setError('');
-  };
+  }, [show]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    setSubmitting(true);
 
-    const payload: any = {
-      column: columnId,
-      title,
-      description,
-      priority,
-      due_date: dueDate || null,
-    };
-    if (assigneeId !== '') payload.assignee_id = assigneeId;
-
-    let taskId: number;
-    try {
-      const res = await api.post('tasks/', payload);
-      taskId = res.data.id;
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Ошибка создания задачи');
-      setSubmitting(false);
+    if (visibility === 'group' && !groupId) {
+      setError('Выберите группу или измените видимость');
       return;
     }
 
-    if (file) {
-      const formData = new FormData();
-      formData.append('task', String(taskId));
-      formData.append('file', file);
-      try {
-        await api.post('attachments/', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-      } catch (err) {
-        console.error('Файл не загрузился:', err);
-      }
+    setSubmitting(true);
+    try {
+      await api.post('tasks/', {
+        column: columnId,
+        title,
+        description,
+        priority,
+        due_date: dueDate || null,
+        assignee_id: assigneeId || null,
+        visibility,
+        group: visibility === 'group' ? groupId : null,
+      });
+      setSubmitting(false);
+      onSuccess();
+    } catch (err: any) {
+      setError(
+        err.response?.data?.detail ||
+        JSON.stringify(err.response?.data) ||
+        'Ошибка создания задачи'
+      );
+      setSubmitting(false);
     }
-
-    resetForm();
-    setSubmitting(false);
-    onSuccess();
   };
 
   if (!show) return null;
@@ -128,7 +127,6 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Дополнительные детали..."
               />
             </div>
 
@@ -165,10 +163,10 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
                 className="form-select"
                 value={assigneeId}
                 onChange={(e) =>
-                  setAssigneeId(e.target.value === '' ? '' : Number(e.target.value))
+                  setAssigneeId(e.target.value ? Number(e.target.value) : '')
                 }
               >
-                <option value="">— Не назначен —</option>
+                <option value="">— Без исполнителя —</option>
                 {members.map((m) => (
                   <option key={m.id} value={m.user.id}>
                     {m.user.username}
@@ -178,26 +176,63 @@ function TaskModal({ show, onHide, columnId, workspaceId, onSuccess }: TaskModal
               </select>
             </div>
 
+            {/* ─── Видимость ─── */}
             <div className="mb-3">
-              <label className="form-label">
-                Файл (PDF, PNG, JPG, ZIP — до 10 МБ)
-              </label>
-              <input
-                type="file"
-                className="form-control"
-                onChange={handleFileChange}
-                accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.zip,.rar,.doc,.docx,.xls,.xlsx"
-              />
-              {file && (
-                <small className="text-muted kb-fade-in">
-                  Выбран: {file.name} ({(file.size / 1024).toFixed(1)} КБ)
-                </small>
-              )}
+              <label className="form-label">Видимость задачи</label>
+              <select
+                className="form-select"
+                value={visibility}
+                onChange={(e) => {
+                  setVisibility(e.target.value as VisibilityType);
+                  if (e.target.value !== 'group') setGroupId('');
+                }}
+              >
+                <option value="public">🌐 Все участники пространства</option>
+                <option value="private">🔒 Только автор и исполнитель</option>
+                <option value="group">👥 Только участники группы</option>
+              </select>
+              <small className="text-muted d-block mt-1">
+                {visibility === 'public' && 'Задачу видят все, кто состоит в пространстве.'}
+                {visibility === 'private' && 'Задачу видите только вы и назначенный исполнитель.'}
+                {visibility === 'group' && 'Задачу видят только участники выбранной группы.'}
+              </small>
             </div>
+
+            {/* ─── Выбор группы ─── */}
+            {visibility === 'group' && (
+              <div className="mb-3 kb-fade-in">
+                <label className="form-label">Группа *</label>
+                <select
+                  className="form-select"
+                  value={groupId}
+                  onChange={(e) =>
+                    setGroupId(e.target.value ? Number(e.target.value) : '')
+                  }
+                  required
+                >
+                  <option value="">— Выберите группу —</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name} ({g.members_count} чел.)
+                    </option>
+                  ))}
+                </select>
+                {groups.length === 0 && (
+                  <small className="text-warning d-block mt-1">
+                    Групп пока нет. Создайте группу в настройках пространства.
+                  </small>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="kb-modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onHide}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={onHide}
+              disabled={submitting}
+            >
               Отмена
             </button>
             <button
