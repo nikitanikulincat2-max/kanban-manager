@@ -76,16 +76,65 @@ class Label(models.Model):
     def __str__(self):
         return self.name
 
+class TaskGroup(models.Model):
+    workspace = models.ForeignKey(
+        Workspace,
+        on_delete=models.CASCADE,
+        related_name='task_groups',
+    )
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='created_groups',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ('workspace', 'name')
+
+    def __str__(self):
+        return f'{self.name} ({self.workspace.name})'
+
+
+class TaskGroupMembership(models.Model):
+    group = models.ForeignKey(
+        TaskGroup,
+        on_delete=models.CASCADE,
+        related_name='memberships',
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='group_memberships',
+    )
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('group', 'user')
+
+    def __str__(self):
+        return f'{self.user.username} в {self.group.name}'
+
 class Task(models.Model):
     PRIORITY_CHOICES = [
         ('low', 'Low'),
         ('medium', 'Medium'),
         ('high', 'High'),
     ]
+    VISIBILITY_CHOICES = [
+        ('public', 'Все участники пространства'),
+        ('private', 'Только автор и исполнитель'),
+        ('group', 'Только участники группы'),
+    ]
     column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='tasks')
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
-    assignee = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_tasks')
+    assignee = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_tasks'
+    )
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_tasks')
     due_date = models.DateField(null=True, blank=True)
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
@@ -93,8 +142,20 @@ class Task(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     labels = models.ManyToManyField(Label, blank=True)
-    # Для загрузки файлов (опционально)
-    attachment = models.FileField(upload_to='attachments/', null=True, blank=True)
+
+    visibility = models.CharField(
+        max_length=10,
+        choices=VISIBILITY_CHOICES,
+        default='public',
+    )
+    group = models.ForeignKey(
+        TaskGroup,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='tasks',
+        help_text='Группа, если visibility=group',
+    )
 
     class Meta:
         ordering = ['order']
@@ -141,3 +202,4 @@ class Attachment(models.Model):
 
     def __str__(self):
         return f'{self.file.name} → {self.task.title}'
+

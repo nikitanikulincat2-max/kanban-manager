@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import (
     Workspace, WorkspaceMembership, Board, Column, Label,
-    Task, Comment, TaskHistory, Attachment
+    Task, Comment, TaskHistory, Attachment, TaskGroup, TaskGroupMembership,
 )
 
 class UserSerializer(serializers.ModelSerializer):
@@ -95,9 +95,9 @@ class TaskSerializer(serializers.ModelSerializer):
     assignee_id = serializers.PrimaryKeyRelatedField(
         source='assignee',
         queryset=User.objects.all(),
-        write_only=True,
-        required=False,
         allow_null=True,
+        required=False,
+        write_only=True,
     )
     created_by = UserSerializer(read_only=True)
     labels = LabelSerializer(many=True, read_only=True)
@@ -105,15 +105,33 @@ class TaskSerializer(serializers.ModelSerializer):
         source='comments.count', read_only=True
     )
 
+    # ─── НОВЫЕ ПОЛЯ ─────────────────────────────
+    group = serializers.PrimaryKeyRelatedField(
+        queryset=TaskGroup.objects.all(),
+        allow_null=True,
+        required=False,
+    )
+    group_name = serializers.CharField(source='group.name', read_only=True)
+
     class Meta:
         model = Task
         fields = [
             'id', 'column', 'title', 'description',
-            'assignee', 'assignee_id', 'created_by',
-            'due_date', 'priority', 'order',
-            'created_at', 'updated_at',
-            'labels', 'comments_count',
+            'assignee', 'assignee_id',
+            'created_by', 'due_date', 'priority', 'order',
+            'created_at', 'updated_at', 'labels', 'comments_count',
+            'visibility', 'group', 'group_name',      # ← добавили
         ]
+
+    def validate(self, data):
+        visibility = data.get('visibility', self.instance.visibility if self.instance else 'public')
+        group = data.get('group', self.instance.group if self.instance else None)
+
+        if visibility == 'group' and not group:
+            raise serializers.ValidationError(
+                'Для видимости «группа» нужно выбрать группу'
+            )
+        return data
 
 class TaskDetailSerializer(TaskSerializer):
     comments = CommentSerializer(many=True, read_only=True)
@@ -144,3 +162,26 @@ class RegisterSerializer(serializers.ModelSerializer):
             password=validated_data['password'],
         )
         return user
+
+class TaskGroupMembershipSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = TaskGroupMembership
+        fields = ['id', 'user', 'added_at']
+
+
+class TaskGroupSerializer(serializers.ModelSerializer):
+    created_by = UserSerializer(read_only=True)
+    memberships = TaskGroupMembershipSerializer(many=True, read_only=True)
+    members_count = serializers.IntegerField(
+        source='memberships.count', read_only=True
+    )
+    workspace_name = serializers.CharField(source='workspace.name', read_only=True)
+
+    class Meta:
+        model = TaskGroup
+        fields = [
+            'id', 'workspace', 'workspace_name', 'name', 'description',
+            'created_by', 'created_at', 'memberships', 'members_count',
+        ]

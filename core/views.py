@@ -14,6 +14,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django_ratelimit.decorators import ratelimit
 from .models import *
 from .serializers import *
+from .permissions import *
+from .serializers import *
 from .permissions import (
     IsSystemAdmin,
     IsWorkspaceMember,
@@ -359,11 +361,27 @@ class TaskViewSet(viewsets.ModelViewSet):
     ordering_fields = ['due_date', 'priority', 'created_at', 'order']
 
     def get_queryset(self):
-        if self.request.user.is_superuser:
-            return Task.objects.all().distinct()
-        return Task.objects.filter(
-            column__board__workspace__memberships__user=self.request.user
+        """Фильтруем задачи с учётом видимости."""
+        user = self.request.user
+
+        if user.is_superuser:
+            base_qs = Task.objects.all()
+        else:
+            # Берём только задачи из пространств пользователя
+            base_qs = Task.objects.filter(
+                column__board__workspace__memberships__user=user
+            )
+
+        # Дополнительно фильтруем по видимости
+        from django.db.models import Q
+        visible_qs = base_qs.filter(
+            Q(visibility='public') |
+            Q(visibility='private', created_by=user) |
+            Q(visibility='private', assignee=user) |
+            Q(visibility='group', group__memberships__user=user)
         ).distinct()
+
+        return visible_qs
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -382,94 +400,29 @@ class TaskViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied('Нет доступа к пространству')
 
         task = serializer.save(created_by=self.request.user, column=column)
-
         TaskHistory.objects.create(
-            task=task,
-            user=self.request.user,
-            field_name='Создание',
-            old_value=None,
-            new_value=f'задача создана в колонке «{column.name}»',
+            task=task, user=self.request.user,
+            field_name='status', old_value=None, new_value='created',
         )
 
-        if task.assignee:
-            TaskHistory.objects.create(
-                task=task,
-                user=self.request.user,
-                field_name='Исполнитель',
-                old_value='Не назначен',
-                new_value=task.assignee.username,
-            )
-
     def perform_update(self, serializer):
+        """Обновлять задачу может только автор, исполнитель, менеджер или суперюзер."""
         task = self.get_object()
+        user = self.request.user
 
-        if not self.request.user.is_superuser:
-            is_manager = task.column.board.workspace.memberships.filter(
-                user=self.request.user, role='manager'
+        # Проверка прав на редактирование
+        if not user.is_superuser:
+            workspace = task.column.board.workspace
+            is_manager = workspace.memberships.filter(
+                user=user, role='manager'
             ).exists()
-            if task.created_by != self.request.user and not is_manager:
+            is_author = task.created_by == user
+            is_assignee = task.assignee == user
+
+            if not (is_manager or is_author or is_assignee):
                 raise PermissionDenied(
-                    'Только создатель задачи или менеджер может её редактировать'
+                    'Редактировать задачу может только её автор, исполнитель или менеджер пространства'
                 )
-
-        old_title = task.title
-        old_description = task.description
-        old_assignee = task.assignee
-        old_priority = task.priority
-        old_due_date = task.due_date
-        old_column = task.column
-        updated = serializer.save()
-
-        priority_labels = {'low': 'Низкий', 'medium': 'Средний', 'high': 'Высокий'}
-
-        if old_title != updated.title:
-            TaskHistory.objects.create(
-                task=updated, user=self.request.user,
-                field_name='Название',
-                old_value=old_title, new_value=updated.title,
-            )
-
-        if old_description != updated.description:
-            old_short = (old_description[:80] + '…') if old_description and len(old_description) > 80 else (
-                        old_description or '∅')
-            new_short = (updated.description[:80] + '…') if updated.description and len(updated.description) > 80 else (
-                        updated.description or '∅')
-            TaskHistory.objects.create(
-                task=updated, user=self.request.user,
-                field_name='Описание',
-                old_value=old_short, new_value=new_short,
-            )
-
-        if old_assignee != updated.assignee:
-            TaskHistory.objects.create(
-                task=updated, user=self.request.user,
-                field_name='Исполнитель',
-                old_value=old_assignee.username if old_assignee else 'Не назначен',
-                new_value=updated.assignee.username if updated.assignee else 'Не назначен',
-            )
-
-        if old_priority != updated.priority:
-            TaskHistory.objects.create(
-                task=updated, user=self.request.user,
-                field_name='Приоритет',
-                old_value=priority_labels.get(old_priority, old_priority),
-                new_value=priority_labels.get(updated.priority, updated.priority),
-            )
-
-        if old_due_date != updated.due_date:
-            TaskHistory.objects.create(
-                task=updated, user=self.request.user,
-                field_name='Срок',
-                old_value=str(old_due_date) if old_due_date else 'Не задан',
-                new_value=str(updated.due_date) if updated.due_date else 'Не задан',
-            )
-
-        if old_column != updated.column:
-            TaskHistory.objects.create(
-                task=updated, user=self.request.user,
-                field_name='Колонка',
-                old_value=old_column.name, new_value=updated.column.name,
-            )
 
         old_data = {
             'column': task.column_id,
@@ -479,40 +432,43 @@ class TaskViewSet(viewsets.ModelViewSet):
         }
         updated = serializer.save()
 
+        # Логирование
         if old_data['column'] != updated.column_id:
             TaskHistory.objects.create(
-                task=updated, user=self.request.user,
+                task=updated, user=user,
                 field_name='column',
                 old_value=str(old_data['column']),
                 new_value=str(updated.column_id),
             )
         if old_data['assignee'] != updated.assignee_id:
             TaskHistory.objects.create(
-                task=updated, user=self.request.user,
+                task=updated, user=user,
                 field_name='assignee',
                 old_value=str(old_data['assignee']),
                 new_value=str(updated.assignee_id),
             )
 
     def perform_destroy(self, instance):
-        if self.request.user.is_superuser:
+        user = self.request.user
+
+        if user.is_superuser:
             instance.delete()
             return
 
         workspace = instance.column.board.workspace
         is_manager = workspace.memberships.filter(
-            user=self.request.user, role='manager'
+            user=user, role='manager'
         ).exists()
+        is_author = instance.created_by == user
 
-        if instance.created_by != self.request.user and not is_manager:
+        if not (is_manager or is_author):
             raise PermissionDenied(
-                'Только создатель задачи или менеджер может её удалить'
+                'Удалять задачу может только её автор или менеджер пространства'
             )
         instance.delete()
 
     @action(detail=True, methods=['post'])
     def move(self, request, pk=None):
-        """Перемещение задачи — доступно всем участникам."""
         task = self.get_object()
         new_column_id = request.data.get('column_id')
         new_order = request.data.get('order', 0)
@@ -641,3 +597,78 @@ def rate_limited_login(request):
         'access': str(refresh.access_token),
         'refresh': str(refresh),
     })
+
+class TaskGroupViewSet(viewsets.ModelViewSet):
+    serializer_class = TaskGroupSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['workspace']
+
+    def get_queryset(self):
+        if self.request.user.is_superuser:
+            return TaskGroup.objects.all()
+        return TaskGroup.objects.filter(
+            workspace__memberships__user=self.request.user
+        ).distinct()
+
+    def perform_create(self, serializer):
+        workspace_id = self.request.data.get('workspace')
+        workspace = Workspace.objects.get(id=workspace_id)
+
+        if not self.request.user.is_superuser:
+            is_manager = workspace.memberships.filter(
+                user=self.request.user, role='manager'
+            ).exists()
+            if not is_manager:
+                raise PermissionDenied(
+                    'Только менеджер пространства может создавать группы'
+                )
+
+        group = serializer.save(created_by=self.request.user)
+
+        TaskGroupMembership.objects.create(
+            group=group, user=self.request.user
+        )
+
+    @action(detail=True, methods=['post'])
+    def add_member(self, request, pk=None):
+        """Добавить участника в группу."""
+        group = self.get_object()
+
+        is_manager = group.workspace.memberships.filter(
+            user=request.user, role='manager'
+        ).exists()
+        if not (request.user.is_superuser or is_manager or group.created_by == request.user):
+            return Response(
+                {'detail': 'Нет прав добавлять участников'},
+                status=403,
+            )
+
+        user_id = request.data.get('user_id')
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({'detail': 'Пользователь не найден'}, status=404)
+
+        if not group.workspace.memberships.filter(user=user).exists():
+            return Response(
+                {'detail': 'Пользователь не состоит в пространстве'},
+                status=400,
+            )
+
+        TaskGroupMembership.objects.get_or_create(group=group, user=user)
+        return Response(TaskGroupSerializer(group).data)
+
+    @action(detail=True, methods=['delete'])
+    def remove_member(self, request, pk=None):
+        group = self.get_object()
+
+        is_manager = group.workspace.memberships.filter(
+            user=request.user, role='manager'
+        ).exists()
+        if not (request.user.is_superuser or is_manager or group.created_by == request.user):
+            return Response({'detail': 'Нет прав'}, status=403)
+
+        user_id = request.query_params.get('user_id')
+        TaskGroupMembership.objects.filter(group=group, user_id=user_id).delete()
+        return Response(status=204)
