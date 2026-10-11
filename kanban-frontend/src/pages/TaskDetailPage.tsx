@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import api from '../api/axiosConfig';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
 import { useAuth } from '../contexts/AuthContext';
+import { useWorkspaceRole } from '../hooks/useWorkspaceRole';
 import type {
   Task,
   Comment,
@@ -37,6 +38,10 @@ function TaskDetailPage() {
   const [showEdit, setShowEdit] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
+  // workspaceId — нужен для useWorkspaceRole
+  const [workspaceId, setWorkspaceId] = useState<number | null>(null);
+  const { isManager } = useWorkspaceRole(workspaceId);
+
   // Поля формы редактирования
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -62,6 +67,15 @@ function TaskDetailPage() {
     try {
       const res = await api.get<TaskFull>(`tasks/${id}/`);
       setTask(res.data);
+
+      // Загружаем ID пространства (для useWorkspaceRole)
+      try {
+        const colRes = await api.get(`columns/${res.data.column}/`);
+        const boardRes = await api.get(`boards/${colRes.data.board}/`);
+        setWorkspaceId(boardRes.data.workspace);
+      } catch (err) {
+        console.error('Не удалось определить пространство', err);
+      }
     } catch (err) {
       console.error(err);
       toast.error('Не удалось загрузить задачу');
@@ -99,7 +113,12 @@ function TaskDetailPage() {
     }
   };
 
+  // ⚠️ Удаление — только менеджер или superuser
   const deleteTask = async () => {
+    if (!isManager) {
+      toast.error('Удалять задачи может только менеджер пространства');
+      return;
+    }
     setDeleting(true);
     try {
       await api.delete(`tasks/${id}/`);
@@ -126,13 +145,8 @@ function TaskDetailPage() {
 
     setShowEdit(true);
 
-    try {
-      const colRes = await api.get(`columns/${task.column}/`);
-      const boardRes = await api.get(`boards/${colRes.data.board}/`);
-      const wsId = boardRes.data.workspace;
-      await loadMembersAndGroups(wsId);
-    } catch (err) {
-      console.error('Не удалось загрузить данные пространства', err);
+    if (workspaceId) {
+      await loadMembersAndGroups(workspaceId);
     }
   };
 
@@ -177,7 +191,6 @@ function TaskDetailPage() {
     try {
       await api.patch(`tasks/${id}/`, payload);
 
-      // Определяем, что именно изменилось для более точного уведомления
       const visibilityChanged = task.visibility !== editVisibility;
       const usersChanged =
         editVisibility === 'users' &&
@@ -214,7 +227,6 @@ function TaskDetailPage() {
     }
   };
 
-  // ─── Загрузка файла ─────────────────────────────
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -285,13 +297,22 @@ function TaskDetailPage() {
     return '📎';
   };
 
-  // Проверка прав на редактирование
+  // ─── Права на действия ─────────────────────────
+  // Редактировать: автор, исполнитель, менеджер, superuser
   const canEdit = (() => {
     if (!task || !user) return false;
     if (user.is_superuser) return true;
+    if (isManager) return true;
     if (task.created_by?.id === user.id) return true;
     if (task.assignee?.id === user.id) return true;
     return false;
+  })();
+
+  // Удалять: ТОЛЬКО менеджер или superuser
+  const canDelete = (() => {
+    if (!user) return false;
+    if (user.is_superuser) return true;
+    return isManager;
   })();
 
   if (loading) {
@@ -358,6 +379,7 @@ function TaskDetailPage() {
             </div>
           </div>
           <div className="d-flex gap-2">
+            {/* Редактировать — автор / исполнитель / менеджер */}
             {canEdit && (
               <button
                 className="btn btn-outline-primary btn-sm"
@@ -367,7 +389,8 @@ function TaskDetailPage() {
                 ✏️ Редактировать
               </button>
             )}
-            {canEdit && (
+            {/* Удалить — ТОЛЬКО менеджер / superuser */}
+            {canDelete && (
               <button
                 className="btn btn-outline-danger btn-sm"
                 onClick={() => setShowDeleteModal(true)}
@@ -687,7 +710,6 @@ function TaskDetailPage() {
               ) : (
                 task.history
                   .filter((h) => {
-                    // Скрываем старые технические записи на английском
                     const oldFields = [
                       'status',
                       'column',
@@ -846,7 +868,6 @@ function TaskDetailPage() {
                 </select>
               </div>
 
-              {/* ─── ВИДИМОСТЬ ─── */}
               <div className="mb-3">
                 <label className="form-label">Видимость задачи</label>
                 <select
@@ -875,7 +896,6 @@ function TaskDetailPage() {
                 </small>
               </div>
 
-              {/* ─── Выбор пользователей ─── */}
               {editVisibility === 'users' && (
                 <div className="mb-3 kb-fade-in">
                   <label className="form-label">
@@ -923,7 +943,6 @@ function TaskDetailPage() {
                 </div>
               )}
 
-              {/* ─── Выбор группы ─── */}
               {editVisibility === 'group' && (
                 <div className="mb-3 kb-fade-in">
                   <label className="form-label">Группа *</label>

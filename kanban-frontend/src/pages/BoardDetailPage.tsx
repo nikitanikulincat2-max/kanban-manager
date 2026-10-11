@@ -19,6 +19,7 @@ function BoardDetailPage() {
   const [tasks, setTasks] = useState<Record<number, Task[]>>({});
   const [loading, setLoading] = useState(true);
 
+  // Роль пользователя — нужна для показа/скрытия кнопок
   const { isManager } = useWorkspaceRole(board?.workspace || null);
 
   // Фильтры
@@ -94,8 +95,15 @@ function BoardDetailPage() {
     }
   };
 
-  // ─── Drag-and-drop ──────────────────────────────
+  // ─── Drag-and-drop — только для менеджеров ──────
   const onDragEnd = async (result: DropResult) => {
+    // ⚠️ Дополнительная защита на фронте:
+    // если пользователь не менеджер — вообще не обрабатываем перемещение
+    if (!isManager) {
+      toast.error('Перемещать задачи может только менеджер пространства');
+      return;
+    }
+
     if (!result.destination) return;
     const { source, destination, draggableId } = result;
 
@@ -126,14 +134,16 @@ function BoardDetailPage() {
         order: destination.index,
       });
       toast.success('Задача перемещена', { autoClose: 1500 });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Не удалось переместить задачу:', err);
-      toast.error('Не удалось переместить задачу');
+      toast.error(
+        err.response?.data?.detail || 'Не удалось переместить задачу'
+      );
       loadBoard();
     }
   };
 
-  // ─── Быстрое перемещение кнопками ───────────────
+  // ─── Быстрое перемещение кнопками — только менеджер ─
   const moveTaskToColumn = async (taskId: number, toColumnId: number) => {
     try {
       await api.post(`tasks/${taskId}/move/`, {
@@ -145,11 +155,13 @@ function BoardDetailPage() {
       loadBoard();
     } catch (err: any) {
       console.error('Ошибка перемещения:', err);
-      toast.error(err.response?.data?.detail || 'Не удалось переместить задачу');
+      toast.error(
+        err.response?.data?.detail || 'Не удалось переместить задачу'
+      );
     }
   };
 
-  // ─── Удаление задачи ────────────────────────────
+  // ─── Удаление задачи — только менеджер ──────────
   const deleteTask = async (taskId: number, title: string) => {
     const ok = await confirm({
       title: '🗑 Удаление задачи',
@@ -225,9 +237,7 @@ function BoardDetailPage() {
   }
 
   if (!board) {
-    return (
-      <div className="alert alert-danger mt-5">Доска не найдена</div>
-    );
+    return <div className="alert alert-danger mt-5">Доска не найдена</div>;
   }
 
   return (
@@ -381,6 +391,7 @@ function BoardDetailPage() {
                       <span className="kb-column-count">
                         {columnTasks.length}
                       </span>
+                      {/* Создавать задачи может любой участник */}
                       <button
                         className="btn btn-sm btn-outline-primary"
                         onClick={() => openCreateModal(col.id)}
@@ -391,7 +402,10 @@ function BoardDetailPage() {
                     </div>
                   </div>
 
-                  <Droppable droppableId={String(col.id)}>
+                  <Droppable
+                    droppableId={String(col.id)}
+                    isDropDisabled={!isManager}
+                  >
                     {(provided, snapshot) => (
                       <div
                         className={`card-body kb-column-drop-zone ${
@@ -414,6 +428,8 @@ function BoardDetailPage() {
                             key={task.id}
                             draggableId={String(task.id)}
                             index={index}
+                            // ⚠️ Перетаскивание только для менеджеров
+                            isDragDisabled={!isManager}
                           >
                             {(provided, snapshot) => (
                               <div
@@ -425,7 +441,11 @@ function BoardDetailPage() {
                                 } ${
                                   snapshot.isDragging ? 'is-dragging' : ''
                                 }`}
-                                style={provided.draggableProps.style}
+                                style={{
+                                  ...provided.draggableProps.style,
+                                  // Меняем курсор для не-менеджеров
+                                  cursor: isManager ? 'grab' : 'pointer',
+                                }}
                               >
                                 <div className="d-flex justify-content-between align-items-start">
                                   <h6
@@ -516,51 +536,53 @@ function BoardDetailPage() {
                                   </div>
                                 )}
 
-                                {/* ─── Быстрые действия ─── */}
-                                <div className="kb-task-actions">
-                                  {prevColumn && (
+                                {/* ─── Быстрые действия: ТОЛЬКО менеджер ─── */}
+                                {isManager && (
+                                  <div className="kb-task-actions">
+                                    {prevColumn && (
+                                      <button
+                                        className="kb-task-action-btn kb-task-action-back"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          moveTaskToColumn(
+                                            task.id,
+                                            prevColumn.id
+                                          );
+                                        }}
+                                        title={`Вернуть в «${prevColumn.name}»`}
+                                      >
+                                        ← {prevColumn.name}
+                                      </button>
+                                    )}
+
+                                    {nextColumn && (
+                                      <button
+                                        className="kb-task-action-btn kb-task-action-forward"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          moveTaskToColumn(
+                                            task.id,
+                                            nextColumn.id
+                                          );
+                                        }}
+                                        title={`Переместить в «${nextColumn.name}»`}
+                                      >
+                                        {nextColumn.name} →
+                                      </button>
+                                    )}
+
                                     <button
-                                      className="kb-task-action-btn kb-task-action-back"
+                                      className="kb-task-action-btn kb-task-action-delete"
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        moveTaskToColumn(
-                                          task.id,
-                                          prevColumn.id
-                                        );
+                                        deleteTask(task.id, task.title);
                                       }}
-                                      title={`Вернуть в «${prevColumn.name}»`}
+                                      title="Удалить задачу"
                                     >
-                                      ← {prevColumn.name}
+                                      🗑
                                     </button>
-                                  )}
-
-                                  {nextColumn && (
-                                    <button
-                                      className="kb-task-action-btn kb-task-action-forward"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        moveTaskToColumn(
-                                          task.id,
-                                          nextColumn.id
-                                        );
-                                      }}
-                                      title={`Переместить в «${nextColumn.name}»`}
-                                    >
-                                      {nextColumn.name} →
-                                    </button>
-                                  )}
-
-                                  <button
-                                    className="kb-task-action-btn kb-task-action-delete"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      deleteTask(task.id, task.title);
-                                    }}
-                                    title="Удалить задачу"
-                                  >
-                                    🗑
-                                  </button>
-                                </div>
+                                  </div>
+                                )}
                               </div>
                             )}
                           </Draggable>
