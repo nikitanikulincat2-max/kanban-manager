@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.core.exceptions import PermissionDenied
 from django.contrib.auth.models import User
 from django.db.models import Q
@@ -13,11 +14,19 @@ from .models import (
     TaskGroup, TaskGroupMembership,
 )
 from .serializers import (
-    UserSerializer, WorkspaceSerializer, WorkspaceMembershipSerializer,
-    BoardSerializer, ColumnSerializer, LabelSerializer,
-    TaskSerializer, TaskDetailSerializer,
-    CommentSerializer, TaskHistorySerializer, AttachmentSerializer,
-    TaskGroupSerializer, TaskGroupMembershipSerializer,
+    UserSerializer,
+    WorkspaceSerializer,
+    WorkspaceMembershipSerializer,
+    BoardSerializer,
+    ColumnSerializer,
+    LabelSerializer,
+    TaskSerializer,
+    TaskDetailSerializer,
+    CommentSerializer,
+    TaskHistorySerializer,
+    AttachmentSerializer,
+    TaskGroupSerializer,
+    TaskGroupMembershipSerializer,
     RegisterSerializer,
 )
 from .permissions import (
@@ -28,7 +37,7 @@ from .permissions import (
 )
 
 
-# ─── USERS ─────────────────────────────────────────────
+# ─── AUTH / REGISTER ───────────────────────────────────
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 
@@ -40,6 +49,7 @@ class RegisterView(APIView):
         return Response(serializer.errors, status=400)
 
 
+# ─── USERS ─────────────────────────────────────────────
 class UserViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
@@ -411,6 +421,7 @@ class TaskViewSet(viewsets.ModelViewSet):
             )
 
     def perform_destroy(self, instance):
+        """Удалять задачу может только менеджер пространства."""
         user = self.request.user
         if not self._is_manager_of_task(instance, user):
             raise PermissionDenied(
@@ -420,6 +431,7 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def move(self, request, pk=None):
+        """Перемещать задачу может только менеджер пространства."""
         task = self.get_object()
         user = request.user
 
@@ -494,12 +506,14 @@ class LabelViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         workspace_id = self.request.data.get('workspace')
         workspace = Workspace.objects.get(id=workspace_id)
+
         if not self.request.user.is_superuser:
             is_manager = workspace.memberships.filter(
                 user=self.request.user, role='manager'
             ).exists()
             if not is_manager:
                 raise PermissionDenied('Только менеджер может создавать метки')
+
         serializer.save(workspace=workspace)
 
 
@@ -581,3 +595,65 @@ class TaskGroupViewSet(viewsets.ModelViewSet):
             group=group, user_id=user_id
         ).delete()
         return Response(status=204)
+
+
+# ─── ATTACHMENTS ───────────────────────────────────────
+class AttachmentViewSet(viewsets.ModelViewSet):
+    """Файлы, прикреплённые к задачам."""
+    serializer_class = AttachmentSerializer
+    permission_classes = [IsAuthenticated, IsWorkspaceMember]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        if self.request.user.is_superuser:
+            return Attachment.objects.all()
+        return Attachment.objects.filter(
+            task__column__board__workspace__memberships__user=self.request.user
+        ).distinct()
+
+    def perform_create(self, serializer):
+        task_id = self.request.data.get('task')
+        try:
+            task = Task.objects.get(id=task_id)
+        except Task.DoesNotExist:
+            raise PermissionDenied('Задача не найдена')
+
+        # Пользователь должен быть участником пространства задачи
+        if not self.request.user.is_superuser:
+            is_member = task.column.board.workspace.memberships.filter(
+                user=self.request.user
+            ).exists()
+            if not is_member:
+                raise PermissionDenied('Нет доступа к задаче')
+
+        # Проверка файла
+        file = self.request.FILES.get('file')
+        if not file:
+            raise PermissionDenied('Файл не передан')
+
+        if file.size > 10 * 1024 * 1024:
+            raise PermissionDenied('Файл не должен превышать 10 МБ')
+
+        allowed_ext = [
+            'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp',
+            'zip', 'rar', '7z', 'doc', 'docx', 'xls', 'xlsx',
+        ]
+        ext = file.name.split('.').pop().lower()
+        if ext not in allowed_ext:
+            raise PermissionDenied(f'Формат .{ext} не поддерживается')
+
+        serializer.save(task=task, uploaded_by=self.request.user)
+
+    def perform_destroy(self, instance):
+        user = self.request.user
+        if not user.is_superuser:
+            workspace = instance.task.column.board.workspace
+            is_manager = workspace.memberships.filter(
+                user=user, role='manager'
+            ).exists()
+            is_author = instance.uploaded_by == user
+            if not (is_author or is_manager):
+                raise PermissionDenied(
+                    'Удалять файл может только его автор или менеджер пространства'
+                )
+        instance.delete()
