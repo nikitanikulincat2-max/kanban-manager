@@ -4,7 +4,6 @@ from .models import (
     Workspace, WorkspaceMembership, Board, Column, Label,
     Task, Comment, TaskHistory, Attachment, TaskGroup, TaskGroupMembership,
 )
-
 class UserSerializer(serializers.ModelSerializer):
     is_manager = serializers.SerializerMethodField()
 
@@ -33,12 +32,10 @@ class WorkspaceMembershipSerializer(serializers.ModelSerializer):
         model = WorkspaceMembership
         fields = ['id', 'user', 'role', 'joined_at']
 
-
 class LabelSerializer(serializers.ModelSerializer):
     class Meta:
         model = Label
         fields = ['id', 'name', 'color']
-
 
 class CommentSerializer(serializers.ModelSerializer):
     author = UserSerializer(read_only=True)
@@ -46,7 +43,6 @@ class CommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = ['id', 'task', 'author', 'text', 'created_at']
-
 
 class TaskHistorySerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -64,12 +60,10 @@ class WorkspaceSerializer(serializers.ModelSerializer):
         model = Workspace
         fields = ['id', 'name', 'created_by', 'created_at', 'memberships']
 
-
 class BoardSerializer(serializers.ModelSerializer):
     class Meta:
         model = Board
         fields = ['id', 'workspace', 'name', 'description', 'created_at', 'order']
-
 
 class ColumnSerializer(serializers.ModelSerializer):
     class Meta:
@@ -104,7 +98,6 @@ class TaskSerializer(serializers.ModelSerializer):
     comments_count = serializers.IntegerField(
         source='comments.count', read_only=True
     )
-
     group = serializers.PrimaryKeyRelatedField(
         queryset=TaskGroup.objects.all(),
         allow_null=True,
@@ -153,14 +146,12 @@ class TaskDetailSerializer(TaskSerializer):
     comments = CommentSerializer(many=True, read_only=True)
     history = TaskHistorySerializer(many=True, read_only=True)
     attachments = AttachmentSerializer(many=True, read_only=True)
-
     class Meta(TaskSerializer.Meta):
         fields = TaskSerializer.Meta.fields + ['comments', 'history', 'attachments']
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
     password2 = serializers.CharField(write_only=True)
-
     class Meta:
         model = User
         fields = ['username', 'email', 'password', 'password2']
@@ -185,7 +176,6 @@ class TaskGroupMembershipSerializer(serializers.ModelSerializer):
     class Meta:
         model = TaskGroupMembership
         fields = ['id', 'user', 'added_at']
-
 
 class TaskGroupSerializer(serializers.ModelSerializer):
     created_by = UserSerializer(read_only=True)

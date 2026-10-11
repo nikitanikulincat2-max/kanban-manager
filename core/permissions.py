@@ -3,22 +3,20 @@ from .models import WorkspaceMembership
 
 
 def get_workspace_from_obj(obj):
-    """Извлекает workspace из любой модели — Board, Column, Task, Label, Comment."""
-    if hasattr(obj, 'memberships'):          # сам Workspace
+    if hasattr(obj, 'memberships'):
         return obj
-    if hasattr(obj, 'workspace'):            # Board, Label
+    if hasattr(obj, 'workspace'):
         return obj.workspace
-    if hasattr(obj, 'board'):                # Column
+    if hasattr(obj, 'board'):
         return obj.board.workspace
-    if hasattr(obj, 'column'):               # Task
+    if hasattr(obj, 'column'):
         return obj.column.board.workspace
-    if hasattr(obj, 'task'):                 # Comment, TaskHistory
+    if hasattr(obj, 'task'):
         return obj.task.column.board.workspace
     return None
 
 
 class IsSystemAdmin(BasePermission):
-    """Только Django superuser."""
     def has_permission(self, request, view):
         return (
             request.user
@@ -28,9 +26,7 @@ class IsSystemAdmin(BasePermission):
 
 
 class IsWorkspaceMember(BasePermission):
-    """Участник пространства (member или manager). Суперюзер — всегда."""
     def has_object_permission(self, request, view, obj):
-        # Суперюзер проходит всегда
         if request.user and request.user.is_superuser:
             return True
 
@@ -41,9 +37,7 @@ class IsWorkspaceMember(BasePermission):
 
 
 class IsWorkspaceManager(BasePermission):
-    """Менеджер пространства. Суперюзер — всегда."""
     def has_object_permission(self, request, view, obj):
-        # Суперюзер проходит всегда
         if request.user and request.user.is_superuser:
             return True
 
@@ -56,9 +50,7 @@ class IsWorkspaceManager(BasePermission):
 
 
 class IsWorkspaceManagerOrReadOnly(BasePermission):
-    """Читать — участникам, изменять — менеджерам. Суперюзер — всегда."""
     def has_object_permission(self, request, view, obj):
-        # Суперюзер проходит всегда — и на чтение, и на запись
         if request.user and request.user.is_superuser:
             return True
 
@@ -70,7 +62,7 @@ class IsWorkspaceManagerOrReadOnly(BasePermission):
         if not is_member:
             return False
 
-        if request.method in SAFE_METHODS:   # GET, HEAD, OPTIONS
+        if request.method in SAFE_METHODS:
             return True
 
         return workspace.memberships.filter(

@@ -36,8 +36,6 @@ from .permissions import (
     IsWorkspaceManagerOrReadOnly,
 )
 
-
-# ─── AUTH / REGISTER ───────────────────────────────────
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 
@@ -48,8 +46,6 @@ class RegisterView(APIView):
             return Response({'detail': 'Пользователь успешно создан'}, status=201)
         return Response(serializer.errors, status=400)
 
-
-# ─── USERS ─────────────────────────────────────────────
 class UserViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
@@ -76,8 +72,6 @@ class UserViewSet(viewsets.ViewSet):
     def me(self, request):
         return Response(UserSerializer(request.user).data)
 
-
-# ─── WORKSPACES ────────────────────────────────────────
 class WorkspaceViewSet(viewsets.ModelViewSet):
     serializer_class = WorkspaceSerializer
     permission_classes = [IsAuthenticated]
@@ -165,8 +159,6 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
         membership.delete()
         return Response(status=204)
 
-
-# ─── BOARDS ────────────────────────────────────────────
 class BoardViewSet(viewsets.ModelViewSet):
     serializer_class = BoardSerializer
     permission_classes = [IsAuthenticated, IsWorkspaceManagerOrReadOnly]
@@ -206,8 +198,6 @@ class BoardViewSet(viewsets.ModelViewSet):
             Column(board=board, name='Готово', order=2),
         ])
 
-
-# ─── COLUMNS ───────────────────────────────────────────
 class ColumnViewSet(viewsets.ModelViewSet):
     serializer_class = ColumnSerializer
     permission_classes = [IsAuthenticated, IsWorkspaceManagerOrReadOnly]
@@ -241,8 +231,6 @@ class ColumnViewSet(viewsets.ModelViewSet):
 
         serializer.save(board=board)
 
-
-# ─── TASKS ─────────────────────────────────────────────
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated, IsWorkspaceMember]
@@ -421,7 +409,6 @@ class TaskViewSet(viewsets.ModelViewSet):
             )
 
     def perform_destroy(self, instance):
-        """Удалять задачу может только менеджер пространства."""
         user = self.request.user
         if not self._is_manager_of_task(instance, user):
             raise PermissionDenied(
@@ -431,7 +418,6 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def move(self, request, pk=None):
-        """Перемещать задачу может только менеджер пространства."""
         task = self.get_object()
         user = request.user
 
@@ -462,8 +448,6 @@ class TaskViewSet(viewsets.ModelViewSet):
         )
         return Response(TaskDetailSerializer(task).data)
 
-
-# ─── COMMENTS ──────────────────────────────────────────
 class CommentViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated, IsWorkspaceMember]
@@ -490,8 +474,6 @@ class CommentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied('Нет прав на удаление комментария')
         instance.delete()
 
-
-# ─── LABELS ────────────────────────────────────────────
 class LabelViewSet(viewsets.ModelViewSet):
     serializer_class = LabelSerializer
     permission_classes = [IsAuthenticated, IsWorkspaceManagerOrReadOnly]
@@ -516,8 +498,6 @@ class LabelViewSet(viewsets.ModelViewSet):
 
         serializer.save(workspace=workspace)
 
-
-# ─── TASK GROUPS ───────────────────────────────────────
 class TaskGroupViewSet(viewsets.ModelViewSet):
     serializer_class = TaskGroupSerializer
     permission_classes = [IsAuthenticated]
@@ -596,10 +576,7 @@ class TaskGroupViewSet(viewsets.ModelViewSet):
         ).delete()
         return Response(status=204)
 
-
-# ─── ATTACHMENTS ───────────────────────────────────────
 class AttachmentViewSet(viewsets.ModelViewSet):
-    """Файлы, прикреплённые к задачам."""
     serializer_class = AttachmentSerializer
     permission_classes = [IsAuthenticated, IsWorkspaceMember]
     parser_classes = [MultiPartParser, FormParser]
@@ -618,7 +595,6 @@ class AttachmentViewSet(viewsets.ModelViewSet):
         except Task.DoesNotExist:
             raise PermissionDenied('Задача не найдена')
 
-        # Пользователь должен быть участником пространства задачи
         if not self.request.user.is_superuser:
             is_member = task.column.board.workspace.memberships.filter(
                 user=self.request.user
@@ -626,7 +602,6 @@ class AttachmentViewSet(viewsets.ModelViewSet):
             if not is_member:
                 raise PermissionDenied('Нет доступа к задаче')
 
-        # Проверка файла
         file = self.request.FILES.get('file')
         if not file:
             raise PermissionDenied('Файл не передан')
@@ -658,19 +633,14 @@ class AttachmentViewSet(viewsets.ModelViewSet):
                 )
         instance.delete()
 
-# ─── RATE-LIMITED LOGIN ───────────────────────────────
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.throttling import AnonRateThrottle
 
 
 class LoginRateThrottle(AnonRateThrottle):
-    """Ограничение: не более 5 попыток входа в минуту с одного IP."""
     scope = 'login'
 
-
 class RateLimitedTokenObtainPairView(TokenObtainPairView):
-    """JWT-вход с ограничением скорости."""
     throttle_classes = [LoginRateThrottle]
-
 
 rate_limited_login = RateLimitedTokenObtainPairView.as_view()

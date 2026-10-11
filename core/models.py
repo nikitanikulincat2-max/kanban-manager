@@ -98,7 +98,6 @@ class TaskGroup(models.Model):
     def __str__(self):
         return f'{self.name} ({self.workspace.name})'
 
-
 class TaskGroupMembership(models.Model):
     group = models.ForeignKey(
         TaskGroup,
