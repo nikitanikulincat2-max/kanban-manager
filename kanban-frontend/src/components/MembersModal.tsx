@@ -26,12 +26,10 @@ function MembersModal({
   onHide,
 }: MembersModalProps) {
   const { confirm } = useConfirm();
-
   const [members, setMembers] = useState<WorkspaceMembership[]>([]);
   const [inviteRole, setInviteRole] = useState<'manager' | 'member'>('member');
   const [inviteError, setInviteError] = useState('');
   const [loading, setLoading] = useState(false);
-
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<UserSearchResult[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(null);
@@ -46,10 +44,8 @@ function MembersModal({
       setInviteError('');
       setInviteRole('member');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show]);
 
-  // Дебаунс-поиск
   useEffect(() => {
     if (searchQuery.length < 2) {
       setSearchResults([]);
@@ -84,7 +80,6 @@ function MembersModal({
     }
   };
 
-  // ─── Приглашение нового участника ──────────────
   const inviteMember = async () => {
     if (!selectedUser) {
       setInviteError('Сначала выберите пользователя из списка');
@@ -115,7 +110,6 @@ function MembersModal({
     }
   };
 
-  // ─── Смена роли ────────────────────────────────
   const changeRole = async (
     userId: number,
     username: string,
@@ -138,7 +132,6 @@ function MembersModal({
     }
   };
 
-  // ─── Удаление участника ────────────────────────
   const removeMember = async (userId: number, username: string) => {
     const ok = await confirm({
       title: '🗑 Удаление участника',

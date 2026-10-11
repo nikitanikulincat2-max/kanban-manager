@@ -17,24 +17,18 @@ function GroupsPage() {
   const workspaceId = id ? Number(id) : null;
   const { isManager } = useWorkspaceRole(workspaceId);
   const { confirm } = useConfirm();
-
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [groups, setGroups] = useState<TaskGroup[]>([]);
   const [members, setMembers] = useState<WorkspaceMembership[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Форма создания группы
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [creating, setCreating] = useState(false);
-
-  // Модалка управления участниками группы
   const [manageGroup, setManageGroup] = useState<TaskGroup | null>(null);
 
   useEffect(() => {
     loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadAll = async () => {
@@ -59,7 +53,6 @@ function GroupsPage() {
     }
   };
 
-  // ─── Создание группы ────────────────────────────
   const createGroup = async (e: FormEvent) => {
     e.preventDefault();
     if (!newName.trim() || !workspaceId) return;
@@ -86,7 +79,6 @@ function GroupsPage() {
     }
   };
 
-  // ─── Удаление группы ────────────────────────────
   const deleteGroup = async (groupId: number, name: string) => {
     const ok = await confirm({
       title: '🗑 Удаление группы',
@@ -106,7 +98,6 @@ function GroupsPage() {
     }
   };
 
-  // ─── Управление участниками группы ──────────────
   const addMember = async (groupId: number, userId: number) => {
     try {
       await api.post(`groups/${groupId}/add_member/`, { user_id: userId });

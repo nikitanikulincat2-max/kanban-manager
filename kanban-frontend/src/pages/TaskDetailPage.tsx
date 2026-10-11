@@ -28,7 +28,6 @@ function TaskDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
-
   const [task, setTask] = useState<TaskFull | null>(null);
   const [commentText, setCommentText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -37,38 +36,28 @@ function TaskDetailPage() {
   const [uploadError, setUploadError] = useState('');
   const [showEdit, setShowEdit] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-
-  // workspaceId — нужен для useWorkspaceRole
   const [workspaceId, setWorkspaceId] = useState<number | null>(null);
   const { isManager } = useWorkspaceRole(workspaceId);
-
-  // Поля формы редактирования
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editPriority, setEditPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [editDueDate, setEditDueDate] = useState('');
   const [editAssigneeId, setEditAssigneeId] = useState<number | ''>('');
-
-  // Поля видимости
   const [editVisibility, setEditVisibility] = useState<VisibilityType>('public');
   const [editGroupId, setEditGroupId] = useState<number | ''>('');
   const [editSelectedUserIds, setEditSelectedUserIds] = useState<number[]>([]);
-
   const [saving, setSaving] = useState(false);
   const [members, setMembers] = useState<WorkspaceMembership[]>([]);
   const [groups, setGroups] = useState<TaskGroup[]>([]);
 
   useEffect(() => {
     loadTask();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadTask = async () => {
     try {
       const res = await api.get<TaskFull>(`tasks/${id}/`);
       setTask(res.data);
-
-      // Загружаем ID пространства (для useWorkspaceRole)
       try {
         const colRes = await api.get(`columns/${res.data.column}/`);
         const boardRes = await api.get(`boards/${colRes.data.board}/`);
@@ -113,7 +102,6 @@ function TaskDetailPage() {
     }
   };
 
-  // ⚠️ Удаление — только менеджер или superuser
   const deleteTask = async () => {
     if (!isManager) {
       toast.error('Удалять задачи может только менеджер пространства');
@@ -132,17 +120,14 @@ function TaskDetailPage() {
 
   const openEdit = async () => {
     if (!task) return;
-
     setEditTitle(task.title);
     setEditDescription(task.description || '');
     setEditPriority(task.priority);
     setEditDueDate(task.due_date || '');
     setEditAssigneeId(task.assignee?.id || '');
-
     setEditVisibility(task.visibility || 'public');
     setEditGroupId(task.group || '');
     setEditSelectedUserIds(task.visible_to_users?.map((u) => u.id) || []);
-
     setShowEdit(true);
 
     if (workspaceId) {
@@ -297,8 +282,6 @@ function TaskDetailPage() {
     return '📎';
   };
 
-  // ─── Права на действия ─────────────────────────
-  // Редактировать: автор, исполнитель, менеджер, superuser
   const canEdit = (() => {
     if (!task || !user) return false;
     if (user.is_superuser) return true;
@@ -308,7 +291,6 @@ function TaskDetailPage() {
     return false;
   })();
 
-  // Удалять: ТОЛЬКО менеджер или superuser
   const canDelete = (() => {
     if (!user) return false;
     if (user.is_superuser) return true;

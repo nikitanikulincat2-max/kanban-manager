@@ -6,12 +6,10 @@ function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const dropdownRef = useRef<HTMLLIElement>(null);
 
-  // Закрытие dropdown по клику вне
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -25,13 +23,11 @@ function Layout() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Закрытие меню при смене страницы
   useEffect(() => {
     setDropdownOpen(false);
     setDrawerOpen(false);
   }, [location.pathname]);
 
-  // Блокируем скролл body, когда меню открыто
   useEffect(() => {
     if (drawerOpen) {
       document.body.style.overflow = 'hidden';

@@ -11,7 +11,7 @@ export interface User {
 export interface WorkspaceMembership {
   id: number;
   user: User;
-  role: 'manager' | 'member';     // ← обновлено: admin → manager
+  role: 'manager' | 'member';     
   joined_at: string;
 }
 

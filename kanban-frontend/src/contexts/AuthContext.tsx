@@ -26,7 +26,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
   const [loading, setLoading] = useState(true);
 
-  // При загрузке приложения — если токен есть, подтягиваем пользователя с сервера
   useEffect(() => {
     const loadUser = async () => {
       const storedToken = localStorage.getItem('access_token');
@@ -98,7 +97,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // 🔄 Обновить данные текущего пользователя (роли, is_manager и т.д.)
   const refreshUser = async () => {
     try {
       const res = await api.get<User>('users/me/');

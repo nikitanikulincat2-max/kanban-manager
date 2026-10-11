@@ -58,7 +58,6 @@ function DashboardPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Фильтруем колонки и задачи по выбранной доске
   const filteredColumns =
     selectedBoard === 'all'
       ? columns
@@ -66,14 +65,11 @@ function DashboardPage() {
 
   const columnIds = new Set(filteredColumns.map((c) => c.id));
   const filteredTasks = tasks.filter((t) => columnIds.has(t.column));
-
   const total = filteredTasks.length;
   const overdue = filteredTasks.filter(
     (t) => t.due_date && new Date(t.due_date) < new Date()
   ).length;
   const highPriority = filteredTasks.filter((t) => t.priority === 'high').length;
-
-  // Группируем задачи по названию колонки (не по ID), чтобы избежать дублей
   const tasksByColumnName = new Map<string, number>();
   filteredColumns.forEach((col) => {
     const count = filteredTasks.filter((t) => t.column === col.id).length;

@@ -13,25 +13,17 @@ function BoardDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { confirm } = useConfirm();
-
   const [board, setBoard] = useState<Board | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
   const [tasks, setTasks] = useState<Record<number, Task[]>>({});
   const [loading, setLoading] = useState(true);
-
-  // Роль пользователя — нужна для показа/скрытия кнопок
   const { isManager } = useWorkspaceRole(board?.workspace || null);
-
-  // Фильтры
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [sortBy, setSortBy] = useState('order');
   const [showFilters, setShowFilters] = useState(false);
-
   const [allUsers, setAllUsers] = useState<{ id: number; username: string }[]>([]);
-
-  // Модалки
   const [showModal, setShowModal] = useState(false);
   const [selectedColumnId, setSelectedColumnId] = useState<number | null>(null);
   const [showColumnModal, setShowColumnModal] = useState(false);
@@ -39,7 +31,6 @@ function BoardDetailPage() {
 
   useEffect(() => {
     loadBoard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, search, priorityFilter, assigneeFilter, sortBy]);
 
   const loadBoard = async () => {
@@ -95,10 +86,7 @@ function BoardDetailPage() {
     }
   };
 
-  // ─── Drag-and-drop — только для менеджеров ──────
   const onDragEnd = async (result: DropResult) => {
-    // ⚠️ Дополнительная защита на фронте:
-    // если пользователь не менеджер — вообще не обрабатываем перемещение
     if (!isManager) {
       toast.error('Перемещать задачи может только менеджер пространства');
       return;
@@ -116,11 +104,9 @@ function BoardDetailPage() {
 
     const sourceColId = parseInt(source.droppableId);
     const destColId = parseInt(destination.droppableId);
-
     const newTasks = { ...tasks };
     const sourceList = [...(newTasks[sourceColId] || [])];
     const destList = [...(newTasks[destColId] || [])];
-
     const [moved] = sourceList.splice(source.index, 1);
     destList.splice(destination.index, 0, { ...moved, column: destColId });
 
@@ -143,7 +129,6 @@ function BoardDetailPage() {
     }
   };
 
-  // ─── Быстрое перемещение кнопками — только менеджер ─
   const moveTaskToColumn = async (taskId: number, toColumnId: number) => {
     try {
       await api.post(`tasks/${taskId}/move/`, {
@@ -161,7 +146,6 @@ function BoardDetailPage() {
     }
   };
 
-  // ─── Удаление задачи — только менеджер ──────────
   const deleteTask = async (taskId: number, title: string) => {
     const ok = await confirm({
       title: '🗑 Удаление задачи',
@@ -428,7 +412,6 @@ function BoardDetailPage() {
                             key={task.id}
                             draggableId={String(task.id)}
                             index={index}
-                            // ⚠️ Перетаскивание только для менеджеров
                             isDragDisabled={!isManager}
                           >
                             {(provided, snapshot) => (
@@ -443,7 +426,6 @@ function BoardDetailPage() {
                                 }`}
                                 style={{
                                   ...provided.draggableProps.style,
-                                  // Меняем курсор для не-менеджеров
                                   cursor: isManager ? 'grab' : 'pointer',
                                 }}
                               >

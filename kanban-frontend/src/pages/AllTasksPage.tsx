@@ -13,24 +13,17 @@ interface TaskWithContext extends Task {
 function AllTasksPage() {
   const [tasks, setTasks] = useState<TaskWithContext[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Фильтры
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [workspaceFilter, setWorkspaceFilter] = useState<number | 'all'>('all');
   const [sortBy, setSortBy] = useState('-created_at');
-
-  // Мобильное сворачивание фильтров
   const [showFilters, setShowFilters] = useState(false);
-
-  // Только эти данные нужны для JSX (селект «Пространство»)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [allUsers, setAllUsers] = useState<{ id: number; username: string }[]>([]);
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, priorityFilter, assigneeFilter, workspaceFilter, sortBy]);
 
   const loadData = async () => {
@@ -43,7 +36,6 @@ function AllTasksPage() {
       if (assigneeFilter) params.append('assignee', assigneeFilter);
       if (sortBy) params.append('ordering', sortBy);
 
-      // Загружаем всё параллельно
       const [tRes, cRes, bRes, wRes] = await Promise.all([
         api.get<Paginated<Task> | Task[]>(`tasks/?${params.toString()}`),
         api.get<Paginated<Column> | Column[]>('columns/'),
@@ -56,10 +48,8 @@ function AllTasksPage() {
       const boardsList = Array.isArray(bRes.data) ? bRes.data : bRes.data.results;
       const wsList = Array.isArray(wRes.data) ? wRes.data : wRes.data.results;
 
-      // В state сохраняем только то, что нужно JSX
       setWorkspaces(wsList);
 
-      // Обогащаем задачи — используем локальные columnsList и boardsList
       const enriched: TaskWithContext[] = tasksList.map((t) => {
         const col = columnsList.find((c) => c.id === t.column);
         const board = col ? boardsList.find((b) => b.id === col.board) : null;
@@ -73,7 +63,6 @@ function AllTasksPage() {
         };
       });
 
-      // Фильтр по пространству — на клиенте
       const filteredByWorkspace =
         workspaceFilter === 'all'
           ? enriched
@@ -81,7 +70,6 @@ function AllTasksPage() {
 
       setTasks(filteredByWorkspace);
 
-      // Уникальные исполнители
       const usersSet = new Map<number, { id: number; username: string }>();
       tasksList.forEach((t) => {
         if (t.assignee) {

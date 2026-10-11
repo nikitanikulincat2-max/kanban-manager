@@ -741,27 +741,19 @@ a:hover {
   }
 }
 
-/* ============================================================
-   АДАПТАЦИЯ ПОД МОБИЛЬНЫЕ УСТРОЙСТВА
-   ============================================================ */
-
-/* Убираем горизонтальный скролл на мобилке */
 html, body {
   overflow-x: hidden;
 }
 
-/* Запрещаем зум по двойному тапу на мобильных */
 @media (max-width: 768px) {
   * {
     -webkit-tap-highlight-color: transparent;
   }
-
-  /* Большие тач-кнопки */
   .btn,
   .form-control,
   .form-select {
     min-height: 44px;
-    font-size: 16px; /* чтобы iOS не зумил при фокусе */
+    font-size: 16px; 
   }
 
   .btn-sm {
@@ -769,13 +761,11 @@ html, body {
     font-size: 14px;
   }
 
-  /* Navbar компактнее */
   .kb-navbar .container {
     padding-left: 12px;
     padding-right: 12px;
   }
 
-  /* Логотип меньше */
   .kb-logo {
     font-size: 1.15rem;
     gap: 8px;
@@ -786,14 +776,12 @@ html, body {
     height: 32px;
   }
 
-  /* Аватар меньше */
   .kb-avatar {
     width: 28px;
     height: 28px;
     font-size: 0.75rem;
   }
 
-  /* Модалки на весь экран */
   .kb-modal-content {
     max-width: 100% !important;
     max-height: 100vh;
@@ -806,26 +794,22 @@ html, body {
     align-items: flex-end;
   }
 
-  /* Форма задачи на мобилке */
   .kb-modal-header,
   .kb-modal-body,
   .kb-modal-footer {
     padding: 16px;
   }
 
-  /* Заголовки уменьшены */
   h1 { font-size: 1.5rem; }
   h2 { font-size: 1.35rem; }
   h3 { font-size: 1.2rem; }
   h4 { font-size: 1.1rem; }
   h5 { font-size: 1rem; }
 
-  /* Карточки пространств — на всю ширину */
   .kb-card {
     border-radius: 10px;
   }
 
-  /* Уменьшаем отступы */
   .container {
     padding-left: 12px;
     padding-right: 12px;
@@ -837,7 +821,6 @@ html, body {
   }
 }
 
-/* Очень узкие экраны */
 @media (max-width: 480px) {
   .kb-auth-card {
     padding: 24px;
@@ -858,7 +841,6 @@ html, body {
   }
 }
 
-/* Анимация модалки снизу вверх (Android-native style) */
 @keyframes kb-slideUpMobile {
   from {
     transform: translateY(100%);
@@ -869,10 +851,6 @@ html, body {
     opacity: 1;
   }
 }
-
-/* ============================================================
-   МОБИЛЬНАЯ НАВИГАЦИЯ
-   ============================================================ */
 
 .kb-mobile-menu-btn {
   display: none;
@@ -905,10 +883,6 @@ html, body {
     display: flex;
   }
 }
-
-/* ============================================================
-   МОБИЛЬНОЕ МЕНЮ-ШТОРКА
-   ============================================================ */
 
 .kb-mobile-drawer-backdrop {
   position: fixed;
@@ -992,7 +966,6 @@ html, body {
   padding-right: 12px;
 }
 
-/* Скрыть скроллбар на мобилке */
 .kb-board-scroll::-webkit-scrollbar {
   height: 6px;
 }
