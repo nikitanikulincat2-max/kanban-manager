@@ -1,6 +1,4 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
-from .models import WorkspaceMembership
-
 
 def get_workspace_from_obj(obj):
     if hasattr(obj, 'memberships'):
