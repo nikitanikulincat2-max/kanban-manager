@@ -1,20 +1,13 @@
 from rest_framework import viewsets, status, filters
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser, FormParser
 from django.core.exceptions import PermissionDenied
-from django.contrib.auth import authenticate
-from django.contrib.auth.models import User, Group
-from django.db import transaction
+from django.contrib.auth.models import User
 from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework_simplejwt.tokens import RefreshToken
-from django_ratelimit.decorators import ratelimit
 from .models import *
-from .serializers import *
-from .permissions import *
 from .serializers import *
 from .permissions import (
     IsSystemAdmin,
@@ -23,78 +16,6 @@ from .permissions import (
     IsWorkspaceManagerOrReadOnly,
 )
 
-def sync_manager_group(user):
-    group, _ = Group.objects.get_or_create(name='Managers')
-    if user.is_superuser:
-        if not user.groups.filter(name='Managers').exists():
-            user.groups.add(group)
-        return
-
-    has_manager_role = WorkspaceMembership.objects.filter(
-        user=user, role='manager'
-    ).exists()
-
-    is_in_group = user.groups.filter(name='Managers').exists()
-
-    if has_manager_role and not is_in_group:
-        user.groups.add(group)
-    elif not has_manager_role and is_in_group:
-        user.groups.remove(group)
-
-class AttachmentViewSet(viewsets.ModelViewSet):
-    serializer_class = AttachmentSerializer
-    permission_classes = [IsAuthenticated, IsWorkspaceMember]
-    parser_classes = [MultiPartParser, FormParser]
-
-    def get_queryset(self):
-        if self.request.user.is_superuser:
-            return Attachment.objects.all()
-        return Attachment.objects.filter(
-            task__column__board__workspace__memberships__user=self.request.user
-        ).distinct()
-
-    def perform_create(self, serializer):
-        attachment = serializer.save(uploaded_by=self.request.user)
-        file_name = attachment.file.name.split('/')[-1]
-        TaskHistory.objects.create(
-            task=attachment.task,
-            user=self.request.user,
-            field_name='Файл',
-            old_value=None,
-            new_value=f'загружен: «{file_name}»',
-        )
-
-    def perform_destroy(self, instance):
-        if self.request.user.is_superuser:
-            task = instance.task
-            file_name = instance.file.name.split('/')[-1]
-            instance.delete()
-            TaskHistory.objects.create(
-                task=task, user=self.request.user,
-                field_name='Файл',
-                old_value=f'удалён: «{file_name}»',
-                new_value=None,
-            )
-            return
-
-        workspace = instance.task.column.board.workspace
-        is_manager = workspace.memberships.filter(
-            user=self.request.user, role='manager'
-        ).exists()
-
-        if instance.uploaded_by != self.request.user and not is_manager:
-            raise PermissionDenied('Нет прав на удаление файла')
-
-        task = instance.task
-        file_name = instance.file.name.split('/')[-1]
-        instance.delete()
-
-        TaskHistory.objects.create(
-            task=task, user=self.request.user,
-            field_name='Файл',
-            old_value=f'удалён: «{file_name}»',
-            new_value=None,
-        )
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
@@ -106,11 +27,12 @@ class RegisterView(APIView):
             return Response({'detail': 'Пользователь успешно создан'}, status=201)
         return Response(serializer.errors, status=400)
 
+
+# ─── USERS ─────────────────────────────────────────────
 class UserViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
-        """Список всех пользователей — только для суперпользователя."""
         if not request.user.is_superuser:
             return Response(
                 {'detail': 'Только администратор может видеть всех пользователей'},
@@ -121,7 +43,6 @@ class UserViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get'])
     def search(self, request):
-        """Поиск пользователей по логину/email — для приглашения в пространство."""
         query = request.query_params.get('q', '').strip()
         if len(query) < 2:
             return Response([])
@@ -134,6 +55,8 @@ class UserViewSet(viewsets.ViewSet):
     def me(self, request):
         return Response(UserSerializer(request.user).data)
 
+
+# ─── WORKSPACES ────────────────────────────────────────
 class WorkspaceViewSet(viewsets.ModelViewSet):
     serializer_class = WorkspaceSerializer
     permission_classes = [IsAuthenticated]
@@ -146,48 +69,26 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
         ).distinct()
 
     def perform_create(self, serializer):
-        is_manager = (
-                self.request.user.is_superuser
-                or self.request.user.groups.filter(name='Managers').exists()
-        )
-        if not is_manager:
-            raise PermissionDenied(
-                'Создавать пространства может только пользователь с ролью «Менеджер».'
-            )
-
         workspace = serializer.save(created_by=self.request.user)
-
-        with transaction.atomic():
-            WorkspaceMembership.objects.create(
-                user=self.request.user,
-                workspace=workspace,
-                role='manager',
-            )
-            sync_manager_group(self.request.user)
+        WorkspaceMembership.objects.create(
+            user=self.request.user,
+            workspace=workspace,
+            role='manager',
+        )
 
     def perform_destroy(self, instance):
-        """Удаление пространства — только менеджер или суперюзер."""
-        if not self.request.user.is_superuser:
-            is_manager = instance.memberships.filter(
-                user=self.request.user, role='manager'
-            ).exists()
-            if not is_manager:
-                raise PermissionDenied('Только менеджер пространства может его удалить')
-        manager_users = list(
-            User.objects.filter(
-                memberships__workspace=instance,
-                memberships__role='manager',
-            ).distinct()
-        )
-
-        with transaction.atomic():
+        if self.request.user.is_superuser:
             instance.delete()
-            for user in manager_users:
-                sync_manager_group(user)
+            return
+        is_manager = instance.memberships.filter(
+            user=self.request.user, role='manager'
+        ).exists()
+        if not is_manager:
+            raise PermissionDenied('Только менеджер может удалить пространство')
+        instance.delete()
 
     @action(detail=True, methods=['post'])
     def add_member(self, request, pk=None):
-        """Приглашение участника или смена роли — только для менеджеров."""
         workspace = self.get_object()
 
         if not request.user.is_superuser:
@@ -202,41 +103,26 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
 
         user_id = request.data.get('user_id')
         role = request.data.get('role', 'member')
-
         if role not in ['member', 'manager']:
-            return Response(
-                {'detail': 'Недопустимая роль. Разрешено: member, manager'},
-                status=400,
-            )
+            return Response({'detail': 'Недопустимая роль'}, status=400)
 
         try:
             user = User.objects.get(id=user_id)
         except User.DoesNotExist:
             return Response({'detail': 'Пользователь не найден'}, status=404)
 
-        with transaction.atomic():
-            membership, created = WorkspaceMembership.objects.update_or_create(
-                user=user,
-                workspace=workspace,
-                defaults={'role': role},
-            )
-            # Синхронизируем группу Managers
-            sync_manager_group(user)
+        membership, created = WorkspaceMembership.objects.update_or_create(
+            user=user, workspace=workspace,
+            defaults={'role': role},
+        )
 
         return Response(
-            {
-                'detail': f'{user.username} {"добавлен как" if created else "обновлён на"} {role}',
-                'user_id': user.id,
-                'username': user.username,
-                'role': membership.role,
-                'created': created,
-            },
+            {'detail': f'{user.username} добавлен как {role}'},
             status=201 if created else 200,
         )
 
     @action(detail=True, methods=['delete'])
     def remove_member(self, request, pk=None):
-        """Удаление участника из пространства."""
         workspace = self.get_object()
 
         if not request.user.is_superuser:
@@ -253,19 +139,13 @@ class WorkspaceViewSet(viewsets.ModelViewSet):
             return Response({'detail': 'Участник не найден'}, status=404)
 
         if membership.user == workspace.created_by:
-            return Response(
-                {'detail': 'Нельзя удалить создателя пространства'},
-                status=400,
-            )
+            return Response({'detail': 'Нельзя удалить создателя'}, status=400)
 
-        removed_user = membership.user
-
-        with transaction.atomic():
-            membership.delete()
-            sync_manager_group(removed_user)
-
+        membership.delete()
         return Response(status=204)
 
+
+# ─── BOARDS ────────────────────────────────────────────
 class BoardViewSet(viewsets.ModelViewSet):
     serializer_class = BoardSerializer
     permission_classes = [IsAuthenticated, IsWorkspaceManagerOrReadOnly]
@@ -305,20 +185,8 @@ class BoardViewSet(viewsets.ModelViewSet):
             Column(board=board, name='Готово', order=2),
         ])
 
-        def perform_destroy(self, instance):
-            if self.request.user.is_superuser:
-                instance.delete()
-                return
 
-            is_manager = instance.workspace.memberships.filter(
-                user=self.request.user, role='manager'
-            ).exists()
-
-            if not is_manager:
-                raise PermissionDenied('Только менеджер может удалить доску')
-
-            instance.delete()
-
+# ─── COLUMNS ───────────────────────────────────────────
 class ColumnViewSet(viewsets.ModelViewSet):
     serializer_class = ColumnSerializer
     permission_classes = [IsAuthenticated, IsWorkspaceManagerOrReadOnly]
@@ -352,6 +220,8 @@ class ColumnViewSet(viewsets.ModelViewSet):
 
         serializer.save(board=board)
 
+
+# ─── TASKS ─────────────────────────────────────────────
 class TaskViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated, IsWorkspaceMember]
@@ -361,24 +231,23 @@ class TaskViewSet(viewsets.ModelViewSet):
     ordering_fields = ['due_date', 'priority', 'created_at', 'order']
 
     def get_queryset(self):
-        """Фильтруем задачи с учётом видимости."""
+        """Задачи с учётом видимости."""
         user = self.request.user
 
         if user.is_superuser:
             base_qs = Task.objects.all()
         else:
-            # Берём только задачи из пространств пользователя
             base_qs = Task.objects.filter(
                 column__board__workspace__memberships__user=user
             )
 
-        # Дополнительно фильтруем по видимости
-        from django.db.models import Q
         visible_qs = base_qs.filter(
             Q(visibility='public') |
             Q(visibility='private', created_by=user) |
             Q(visibility='private', assignee=user) |
-            Q(visibility='group', group__memberships__user=user)
+            Q(visibility='users', visible_to_users=user) |
+            Q(visibility='group', group__memberships__user=user) |
+            Q(created_by=user)
         ).distinct()
 
         return visible_qs
@@ -388,7 +257,17 @@ class TaskViewSet(viewsets.ModelViewSet):
             return TaskDetailSerializer
         return TaskSerializer
 
+    # ─── Вспомогательный метод: менеджер ли пользователь ────
+    def _is_manager_of_task(self, task, user):
+        if user.is_superuser:
+            return True
+        workspace = task.column.board.workspace
+        return workspace.memberships.filter(
+            user=user, role='manager'
+        ).exists()
+
     def perform_create(self, serializer):
+        """Создавать задачи может любой участник пространства."""
         column_id = self.request.data.get('column')
         column = Column.objects.get(id=column_id)
 
@@ -399,21 +278,15 @@ class TaskViewSet(viewsets.ModelViewSet):
             if not is_member:
                 raise PermissionDenied('Нет доступа к пространству')
 
-        task = serializer.save(created_by=self.request.user, column=column)
-        TaskHistory.objects.create(
-            task=task, user=self.request.user,
-            field_name='status', old_value=None, new_value='created',
-        )
+        serializer.save(created_by=self.request.user, column=column)
 
     def perform_update(self, serializer):
+        """Редактировать может автор, исполнитель или менеджер."""
         task = self.get_object()
         user = self.request.user
 
         if not user.is_superuser:
-            workspace = task.column.board.workspace
-            is_manager = workspace.memberships.filter(
-                user=user, role='manager'
-            ).exists()
+            is_manager = self._is_manager_of_task(task, user)
             is_author = task.created_by == user
             is_assignee = task.assignee == user
 
@@ -423,6 +296,7 @@ class TaskViewSet(viewsets.ModelViewSet):
                     'исполнитель или менеджер пространства'
                 )
 
+        # Запоминаем старые значения
         PRIORITY_LABELS = {'low': 'Низкий', 'medium': 'Средний', 'high': 'Высокий'}
 
         old_data = {
@@ -442,6 +316,8 @@ class TaskViewSet(viewsets.ModelViewSet):
         }
 
         updated = serializer.save()
+
+        # Логирование
         if old_data['column_id'] != updated.column_id:
             TaskHistory.objects.create(
                 task=updated, user=user,
@@ -496,13 +372,11 @@ class TaskViewSet(viewsets.ModelViewSet):
 
         new_visible_users = set(updated.visible_to_users.values_list('id', flat=True))
         if old_data['visible_users'] != new_visible_users:
-            from django.contrib.auth.models import User as UserModel
-
             def names(ids_set):
                 if not ids_set:
                     return 'Не выбраны'
                 names_list = list(
-                    UserModel.objects.filter(id__in=ids_set).values_list('username', flat=True)
+                    User.objects.filter(id__in=ids_set).values_list('username', flat=True)
                 )
                 shown = ', '.join(names_list[:3])
                 suffix = f' и ещё {len(names_list) - 3}' if len(names_list) > 3 else ''
@@ -532,47 +406,28 @@ class TaskViewSet(viewsets.ModelViewSet):
             )
 
     def perform_destroy(self, instance):
+        """⚠️ Удалять задачу может ТОЛЬКО менеджер пространства или superuser."""
         user = self.request.user
 
-        if user.is_superuser:
-            instance.delete()
-            return
-
-        workspace = instance.column.board.workspace
-        is_manager = workspace.memberships.filter(
-            user=user, role='manager'
-        ).exists()
-        is_author = instance.created_by == user
-
-        if not (is_manager or is_author):
+        if not self._is_manager_of_task(instance, user):
             raise PermissionDenied(
-                'Удалять задачу может только её автор или менеджер пространства'
+                'Удалять задачи может только менеджер пространства'
             )
+
         instance.delete()
 
     @action(detail=True, methods=['post'])
     def move(self, request, pk=None):
-        """Перемещение задачи между колонками.
-        Разрешено: менеджеру пространства, автору задачи, superuser.
-        """
+        """⚠️ Перемещать задачу может ТОЛЬКО менеджер пространства или superuser."""
         task = self.get_object()
         user = request.user
 
-        # ─── Проверка прав ──────────────────────────────
-        if not user.is_superuser:
-            workspace = task.column.board.workspace
-            is_manager = workspace.memberships.filter(
-                user=user, role='manager'
-            ).exists()
-            is_author = task.created_by == user
+        if not self._is_manager_of_task(task, user):
+            return Response(
+                {'detail': 'Перемещать задачи может только менеджер пространства'},
+                status=403,
+            )
 
-            if not (is_manager or is_author):
-                return Response(
-                    {'detail': 'Только менеджер пространства или автор задачи могут её перемещать'},
-                    status=403,
-                )
-
-        # ─── Само перемещение ──────────────────────────
         new_column_id = request.data.get('column_id')
         new_order = request.data.get('order', 0)
 
@@ -580,13 +435,6 @@ class TaskViewSet(viewsets.ModelViewSet):
             new_column = Column.objects.get(id=new_column_id)
         except Column.DoesNotExist:
             return Response({'detail': 'Колонка не найдена'}, status=404)
-
-        # Проверяем, что новая колонка в той же доске
-        if new_column.board_id != task.column.board_id:
-            return Response(
-                {'detail': 'Нельзя переместить задачу в другую доску'},
-                status=400,
-            )
 
         old_column = task.column
         task.column = new_column
@@ -601,39 +449,38 @@ class TaskViewSet(viewsets.ModelViewSet):
         )
         return Response(TaskDetailSerializer(task).data)
 
-    def perform_create(self, serializer):
-        column_id = self.request.data.get('column')
-        column = Column.objects.get(id=column_id)
 
-        if not self.request.user.is_superuser:
-            is_member = column.board.workspace.memberships.filter(
-                user=self.request.user
-            ).exists()
-            if not is_member:
-                raise PermissionDenied('Нет доступа к пространству')
-        serializer.save(created_by=self.request.user, column=column)
+# ─── COMMENTS ──────────────────────────────────────────
+class CommentViewSet(viewsets.ModelViewSet):
+    serializer_class = CommentSerializer
+    permission_classes = [IsAuthenticated, IsWorkspaceMember]
+
+    def get_queryset(self):
+        if self.request.user.is_superuser:
+            return Comment.objects.all().distinct()
+        return Comment.objects.filter(
+            task__column__board__workspace__memberships__user=self.request.user
+        ).distinct()
+
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
 
     def perform_destroy(self, instance):
-        """Удаление задачи — только менеджер пространства или superuser."""
-        user = self.request.user
-
-        if user.is_superuser:
+        if self.request.user.is_superuser:
             instance.delete()
             return
 
-        workspace = instance.column.board.workspace
+        workspace = instance.task.column.board.workspace
         is_manager = workspace.memberships.filter(
-            user=user, role='manager'
+            user=self.request.user, role='manager'
         ).exists()
 
-        # Только менеджер может удалять
-        if not is_manager:
-            raise PermissionDenied(
-                'Только менеджер пространства может удалять задачи'
-            )
-
+        if instance.author != self.request.user and not is_manager:
+            raise PermissionDenied('Нет прав на удаление комментария')
         instance.delete()
 
+
+# ─── LABELS ────────────────────────────────────────────
 class LabelViewSet(viewsets.ModelViewSet):
     serializer_class = LabelSerializer
     permission_classes = [IsAuthenticated, IsWorkspaceManagerOrReadOnly]
@@ -658,44 +505,8 @@ class LabelViewSet(viewsets.ModelViewSet):
 
         serializer.save(workspace=workspace)
 
-@api_view(['POST'])
-@permission_classes([AllowAny])
-@ratelimit(key='ip', rate='5/m', method='POST', block=True)
-def rate_limited_login(request):
-    """
-    Вход в систему с ограничением попыток.
 
-    Лимит: 5 попыток в минуту с одного IP.
-    При превышении — 429 Too Many Requests.
-    """
-    username = request.data.get('username')
-    password = request.data.get('password')
-
-    if not username or not password:
-        return Response(
-            {'detail': 'Укажите логин и пароль'},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    user = authenticate(username=username, password=password)
-    if user is None:
-        return Response(
-            {'detail': 'Неверный логин или пароль'},
-            status=status.HTTP_401_UNAUTHORIZED,
-        )
-
-    if not user.is_active:
-        return Response(
-            {'detail': 'Аккаунт заблокирован'},
-            status=status.HTTP_403_FORBIDDEN,
-        )
-
-    refresh = RefreshToken.for_user(user)
-    return Response({
-        'access': str(refresh.access_token),
-        'refresh': str(refresh),
-    })
-
+# ─── TASK GROUPS ───────────────────────────────────────
 class TaskGroupViewSet(viewsets.ModelViewSet):
     serializer_class = TaskGroupSerializer
     permission_classes = [IsAuthenticated]
@@ -723,24 +534,23 @@ class TaskGroupViewSet(viewsets.ModelViewSet):
                 )
 
         group = serializer.save(created_by=self.request.user)
-
         TaskGroupMembership.objects.create(
             group=group, user=self.request.user
         )
 
     @action(detail=True, methods=['post'])
     def add_member(self, request, pk=None):
-        """Добавить участника в группу."""
         group = self.get_object()
 
         is_manager = group.workspace.memberships.filter(
             user=request.user, role='manager'
         ).exists()
-        if not (request.user.is_superuser or is_manager or group.created_by == request.user):
-            return Response(
-                {'detail': 'Нет прав добавлять участников'},
-                status=403,
-            )
+        if not (
+            request.user.is_superuser
+            or is_manager
+            or group.created_by == request.user
+        ):
+            return Response({'detail': 'Нет прав'}, status=403)
 
         user_id = request.data.get('user_id')
         try:
@@ -764,9 +574,15 @@ class TaskGroupViewSet(viewsets.ModelViewSet):
         is_manager = group.workspace.memberships.filter(
             user=request.user, role='manager'
         ).exists()
-        if not (request.user.is_superuser or is_manager or group.created_by == request.user):
+        if not (
+            request.user.is_superuser
+            or is_manager
+            or group.created_by == request.user
+        ):
             return Response({'detail': 'Нет прав'}, status=403)
 
         user_id = request.query_params.get('user_id')
-        TaskGroupMembership.objects.filter(group=group, user_id=user_id).delete()
+        TaskGroupMembership.objects.filter(
+            group=group, user_id=user_id
+        ).delete()
         return Response(status=204)
