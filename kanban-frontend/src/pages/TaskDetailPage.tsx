@@ -439,11 +439,11 @@ function TaskDetailPage() {
                     className="text-muted d-flex align-items-center"
                     style={{ minWidth: 145 }}
                   >
-                    <span style={{ marginRight: 10 }}>👤</span>Исполнитель
+                    <span style={{ marginRight: 10 }}>✏️</span>Автор задачи
                   </span>
                   <strong>
-                    {task.assignee?.username || (
-                      <span className="text-muted fst-italic">Не назначен</span>
+                    {task.created_by?.username || (
+                      <span className="text-muted fst-italic">Неизвестно</span>
                     )}
                   </strong>
                 </div>

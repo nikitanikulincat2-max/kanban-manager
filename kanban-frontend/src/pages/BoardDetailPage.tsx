@@ -512,22 +512,26 @@ function BoardDetailPage() {
                                   </p>
                                 )}
 
-                                <div className="d-flex justify-content-between align-items-center small">
-                                  <span className="text-muted">
-                                    {task.assignee?.username ||
-                                      'Без исполнителя'}
-                                  </span>
-                                  {task.due_date && (
-                                    <span
-                                      className={
-                                        new Date(task.due_date) < new Date()
-                                          ? 'text-danger'
-                                          : 'text-muted'
-                                      }
-                                    >
-                                      {task.due_date}
+                               <div className="d-flex flex-column gap-1 small">
+                                  <div className="d-flex justify-content-between align-items-center">
+                                    <span className="text-muted" title="Исполнитель">
+                                      👤 {task.assignee?.username || 'Не назначен'}
                                     </span>
-                                  )}
+                                    {task.due_date && (
+                                      <span
+                                        className={
+                                          new Date(task.due_date) < new Date()
+                                            ? 'text-danger'
+                                            : 'text-muted'
+                                        }
+                                      >
+                                        {task.due_date}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-muted" title="Автор задачи">
+                                    ✏️ Создал: <strong>{task.created_by?.username || '—'}</strong>
+                                  </div>
                                 </div>
 
                                 {task.comments_count > 0 && (

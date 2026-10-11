@@ -308,18 +308,21 @@ function AllTasksPage() {
                         </p>
                       )}
                       <div className="d-flex align-items-center gap-3 small text-muted flex-wrap">
-                        <span>
-                          📂 {task.workspaceName} / {task.boardName} →{' '}
-                          {task.columnName}
-                        </span>
-                        <span>
-                          👤 {task.assignee?.username || 'Без исполнителя'}
-                        </span>
-                        {task.due_date && <span>📅 {task.due_date}</span>}
-                        {task.comments_count > 0 && (
-                          <span>💬 {task.comments_count}</span>
-                        )}
-                      </div>
+                      <span>
+                        📂 {task.workspaceName} / {task.boardName} → {task.columnName}
+                      </span>
+                      <span>
+                        👤 {task.assignee?.username || 'Без исполнителя'}
+                      </span>
+                      {/* ─── НОВОЕ ─── */}
+                      <span title="Автор задачи">
+                        ✏️ {task.created_by?.username || '—'}
+                      </span>
+                      {task.due_date && <span>📅 {task.due_date}</span>}
+                      {task.comments_count > 0 && (
+                        <span>💬 {task.comments_count}</span>
+                      )}
+                    </div>
                     </div>
 
                     <div className="d-flex flex-column align-items-end gap-1 flex-shrink-0">
