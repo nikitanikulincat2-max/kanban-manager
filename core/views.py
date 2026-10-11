@@ -552,7 +552,27 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def move(self, request, pk=None):
+        """Перемещение задачи между колонками.
+        Разрешено: менеджеру пространства, автору задачи, superuser.
+        """
         task = self.get_object()
+        user = request.user
+
+        # ─── Проверка прав ──────────────────────────────
+        if not user.is_superuser:
+            workspace = task.column.board.workspace
+            is_manager = workspace.memberships.filter(
+                user=user, role='manager'
+            ).exists()
+            is_author = task.created_by == user
+
+            if not (is_manager or is_author):
+                return Response(
+                    {'detail': 'Только менеджер пространства или автор задачи могут её перемещать'},
+                    status=403,
+                )
+
+        # ─── Само перемещение ──────────────────────────
         new_column_id = request.data.get('column_id')
         new_order = request.data.get('order', 0)
 
@@ -561,45 +581,25 @@ class TaskViewSet(viewsets.ModelViewSet):
         except Column.DoesNotExist:
             return Response({'detail': 'Колонка не найдена'}, status=404)
 
+        # Проверяем, что новая колонка в той же доске
+        if new_column.board_id != task.column.board_id:
+            return Response(
+                {'detail': 'Нельзя переместить задачу в другую доску'},
+                status=400,
+            )
+
         old_column = task.column
         task.column = new_column
         task.order = new_order
         task.save()
 
         TaskHistory.objects.create(
-            task=task, user=request.user,
+            task=task, user=user,
             field_name='Колонка',
             old_value=old_column.name,
             new_value=new_column.name,
         )
         return Response(TaskDetailSerializer(task).data)
-
-class CommentViewSet(viewsets.ModelViewSet):
-    serializer_class = CommentSerializer
-    permission_classes = [IsAuthenticated, IsWorkspaceMember]
-
-    def get_queryset(self):
-        from django.db.models import Q
-
-        user = self.request.user
-
-        if user.is_superuser:
-            base_qs = Task.objects.all()
-        else:
-            base_qs = Task.objects.filter(
-                column__board__workspace__memberships__user=user
-            )
-
-        visible_qs = base_qs.filter(
-            Q(visibility='public') |
-            Q(visibility='private', created_by=user) |
-            Q(visibility='private', assignee=user) |
-            Q(visibility='users', visible_to_users=user) |
-            Q(visibility='group', group__memberships__user=user) |
-            Q(created_by=user)
-        ).distinct()
-
-        return visible_qs
 
     def perform_create(self, serializer):
         column_id = self.request.data.get('column')
@@ -614,26 +614,24 @@ class CommentViewSet(viewsets.ModelViewSet):
         serializer.save(created_by=self.request.user, column=column)
 
     def perform_destroy(self, instance):
-        if self.request.user.is_superuser:
+        """Удаление задачи — только менеджер пространства или superuser."""
+        user = self.request.user
+
+        if user.is_superuser:
             instance.delete()
             return
 
-        workspace = instance.task.column.board.workspace
+        workspace = instance.column.board.workspace
         is_manager = workspace.memberships.filter(
-            user=self.request.user, role='manager'
+            user=user, role='manager'
         ).exists()
 
-        if instance.author != self.request.user and not is_manager:
-            raise PermissionDenied('Нет прав на удаление комментария')
+        # Только менеджер может удалять
+        if not is_manager:
+            raise PermissionDenied(
+                'Только менеджер пространства может удалять задачи'
+            )
 
-        preview = instance.text[:80] + '…' if len(instance.text) > 80 else instance.text
-        TaskHistory.objects.create(
-            task=instance.task,
-            user=self.request.user,
-            field_name='Комментарий',
-            old_value=f'удалён: «{preview}»',
-            new_value=None,
-        )
         instance.delete()
 
 class LabelViewSet(viewsets.ModelViewSet):
