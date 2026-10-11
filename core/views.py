@@ -657,3 +657,20 @@ class AttachmentViewSet(viewsets.ModelViewSet):
                     'Удалять файл может только его автор или менеджер пространства'
                 )
         instance.delete()
+
+# ─── RATE-LIMITED LOGIN ───────────────────────────────
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.throttling import AnonRateThrottle
+
+
+class LoginRateThrottle(AnonRateThrottle):
+    """Ограничение: не более 5 попыток входа в минуту с одного IP."""
+    scope = 'login'
+
+
+class RateLimitedTokenObtainPairView(TokenObtainPairView):
+    """JWT-вход с ограничением скорости."""
+    throttle_classes = [LoginRateThrottle]
+
+
+rate_limited_login = RateLimitedTokenObtainPairView.as_view()
