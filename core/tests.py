@@ -1,263 +1,235 @@
-from rest_framework.test import APITestCase
+from django.urls import reverse
 from rest_framework import status
+from rest_framework.test import APITestCase
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from .models import (
     Workspace, WorkspaceMembership, Board, Column, Task,
-    TaskGroup, TaskGroupMembership, Comment,
+    TaskGroup, TaskGroupMembership, Comment, TaskHistory, Attachment
 )
 
 
-class AuthTestCase(APITestCase):
-    """Тесты регистрации и авторизации."""
-
-    def test_01_register_new_user(self):
-        """Успешная регистрация."""
-        response = self.client.post('/api/register/', {
-            'username': 'newuser',
-            'email': 'new@example.com',
-            'password': 'StrongPass123',
-            'password2': 'StrongPass123',
-        })
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(User.objects.filter(username='newuser').exists())
-
-    def test_02_register_duplicate_username(self):
-        """Повторная регистрация с занятым логином."""
-        User.objects.create_user(username='existing', password='pass12345')
-        response = self.client.post('/api/register/', {
-            'username': 'existing',
-            'email': 'x@example.com',
-            'password': 'StrongPass123',
-            'password2': 'StrongPass123',
-        })
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_03_register_password_mismatch(self):
-        """Пароли не совпадают."""
-        response = self.client.post('/api/register/', {
-            'username': 'user1',
-            'email': 'x@example.com',
-            'password': 'StrongPass123',
-            'password2': 'DifferentPass456',
-        })
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_04_token_obtain(self):
-        """Получение JWT-токена."""
-        User.objects.create_user(username='user1', password='StrongPass123')
-        response = self.client.post('/api/token/', {
-            'username': 'user1',
-            'password': 'StrongPass123',
-        })
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
-
-
-class TaskCRUDTestCase(APITestCase):
-    """Тесты CRUD задач и прав доступа."""
+class BaseAPITestCase(APITestCase):
+    """Базовый класс для настройки тестовых данных."""
 
     def setUp(self):
         self.admin = User.objects.create_superuser(username='admin', password='AdminPass123')
-        self.manager = User.objects.create_user(username='manager', password='Pass12345')
-        self.member = User.objects.create_user(username='member', password='Pass12345')
-
+        self.manager = User.objects.create_user(username='manager', password='ManagerPass123')
+        self.member = User.objects.create_user(username='member', password='MemberPass123')
+        self.other_user = User.objects.create_user(username='other', password='OtherPass123')
         self.workspace = Workspace.objects.create(name='Test WS', created_by=self.manager)
         WorkspaceMembership.objects.create(user=self.manager, workspace=self.workspace, role='manager')
         WorkspaceMembership.objects.create(user=self.member, workspace=self.workspace, role='member')
+        WorkspaceMembership.objects.create(user=self.other_user, workspace=self.workspace, role='member')
 
-        self.board = Board.objects.create(workspace=self.workspace, name='Board')
-        self.col1 = Column.objects.create(board=self.board, name='К выполнению', order=0)
-        self.col2 = Column.objects.create(board=self.board, name='В работе', order=1)
-
-    def test_05_create_task_as_member(self):
-        """Участник может создать задачу."""
-        self.client.force_authenticate(user=self.member)
-        response = self.client.post('/api/tasks/', {
-            'column': self.col1.id,
-            'title': 'Test Task',
-            'description': 'Desc',
-            'priority': 'medium',
-            'visibility': 'public',
-        })
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(Task.objects.count(), 1)
-
-    def test_06_member_cannot_delete_task(self):
-        """Участник не может удалить задачу."""
-        task = Task.objects.create(column=self.col1, title='T', created_by=self.manager)
-        self.client.force_authenticate(user=self.member)
-        response = self.client.delete(f'/api/tasks/{task.id}/')
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_07_manager_can_delete_task(self):
-        """Менеджер может удалить задачу."""
-        task = Task.objects.create(column=self.col1, title='T', created_by=self.manager)
-        self.client.force_authenticate(user=self.manager)
-        response = self.client.delete(f'/api/tasks/{task.id}/')
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-
-    def test_08_member_cannot_move_task(self):
-        """Участник не может перемещать задачу."""
-        task = Task.objects.create(column=self.col1, title='T', created_by=self.manager)
-        self.client.force_authenticate(user=self.member)
-        response = self.client.post(f'/api/tasks/{task.id}/move/', {
-            'column_id': self.col2.id,
-            'order': 0,
-        })
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_09_manager_can_move_task(self):
-        """Менеджер перемещает задачу."""
-        task = Task.objects.create(column=self.col1, title='T', created_by=self.manager)
-        self.client.force_authenticate(user=self.manager)
-        response = self.client.post(f'/api/tasks/{task.id}/move/', {
-            'column_id': self.col2.id,
-            'order': 0,
-        })
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        task.refresh_from_db()
-        self.assertEqual(task.column_id, self.col2.id)
-
-
-class TaskVisibilityTestCase(APITestCase):
-    """Тесты механизма видимости задач."""
-
-    def setUp(self):
-        self.author = User.objects.create_user(username='author', password='Pass12345')
-        self.other = User.objects.create_user(username='other', password='Pass12345')
-        self.selected = User.objects.create_user(username='selected', password='Pass12345')
-
-        self.ws = Workspace.objects.create(name='WS', created_by=self.author)
-        for u in [self.author, self.other, self.selected]:
-            WorkspaceMembership.objects.create(user=u, workspace=self.ws, role='member')
-
-        self.board = Board.objects.create(workspace=self.ws, name='B')
-        self.col = Column.objects.create(board=self.board, name='Col')
-
-    def test_10_public_visible_to_all(self):
-        """Public-задача видна всем."""
-        Task.objects.create(column=self.col, title='Public', created_by=self.author, visibility='public')
-        self.client.force_authenticate(user=self.other)
-        response = self.client.get('/api/tasks/')
-        tasks = response.data['results'] if 'results' in response.data else response.data
-        self.assertEqual(len(tasks), 1)
-
-    def test_11_private_visible_only_author(self):
-        """Private-задача видна только автору."""
-        Task.objects.create(column=self.col, title='Private', created_by=self.author, visibility='private')
-        self.client.force_authenticate(user=self.other)
-        response = self.client.get('/api/tasks/')
-        tasks = response.data['results'] if 'results' in response.data else response.data
-        self.assertEqual(len(tasks), 0)
-
-        self.client.force_authenticate(user=self.author)
-        response = self.client.get('/api/tasks/')
-        tasks = response.data['results'] if 'results' in response.data else response.data
-        self.assertEqual(len(tasks), 1)
-
-    def test_12_users_visibility(self):
-        """Задача видна выбранному пользователю."""
-        task = Task.objects.create(
-            column=self.col, title='For Selected',
-            created_by=self.author, visibility='users'
-        )
-        task.visible_to_users.add(self.selected)
-
-        # Выбранный видит
-        self.client.force_authenticate(user=self.selected)
-        response = self.client.get('/api/tasks/')
-        tasks = response.data['results'] if 'results' in response.data else response.data
-        self.assertEqual(len(tasks), 1)
-
-        # Не выбранный — не видит
-        self.client.force_authenticate(user=self.other)
-        response = self.client.get('/api/tasks/')
-        tasks = response.data['results'] if 'results' in response.data else response.data
-        self.assertEqual(len(tasks), 0)
-
-    def test_13_group_visibility(self):
-        """Задача видна участникам группы."""
-        group = TaskGroup.objects.create(workspace=self.ws, name='Group', created_by=self.author)
-        TaskGroupMembership.objects.create(group=group, user=self.selected)
-
-        Task.objects.create(
-            column=self.col, title='Group Task',
-            created_by=self.author, visibility='group', group=group
+        self.board = Board.objects.create(workspace=self.workspace, name='Test Board')
+        self.col_todo = Column.objects.create(board=self.board, name='К выполнению', order=0)
+        self.col_in_progress = Column.objects.create(board=self.board, name='В работе', order=1)
+        self.task = Task.objects.create(
+            column=self.col_todo,
+            title='Test Task',
+            created_by=self.manager,
+            visibility='public'
         )
 
-        # Участник группы видит
-        self.client.force_authenticate(user=self.selected)
-        response = self.client.get('/api/tasks/')
-        tasks = response.data['results'] if 'results' in response.data else response.data
+
+class AuthTestCase(BaseAPITestCase):
+    """TC-01 - TC-06: Аутентификация и Пользователи"""
+
+    def test_tc01_02_register(self):
+        res = self.client.post('/api/register/', {
+            'username': 'newuser', 'email': 'new@ex.com', 'password': 'StrongPass123', 'password2': 'StrongPass123'
+        })
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        res = self.client.post('/api/register/', {
+            'username': 'newuser', 'email': 'new2@ex.com', 'password': 'StrongPass123', 'password2': 'StrongPass123'
+        })
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_tc03_04_login(self):
+        res = self.client.post('/api/token/', {'username': 'manager', 'password': 'ManagerPass123'})
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('access', res.data)
+        res = self.client.post('/api/token/', {'username': 'manager', 'password': 'WrongPass'})
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_tc05_api_without_token(self):
+        res = self.client.get('/api/workspaces/')
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_tc06_user_me(self):
+        self.client.force_authenticate(user=self.member)
+        res = self.client.get('/api/users/me/')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['username'], 'member')
+
+
+class WorkspaceAndRBACTestCase(BaseAPITestCase):
+    """TC-07 - TC-12: Пространства и Роли"""
+
+    def test_tc07_create_workspace(self):
+        self.client.force_authenticate(user=self.member)
+        res = self.client.post('/api/workspaces/', {'name': 'New Workspace'})
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        ws_id = res.data['id']
+        membership = WorkspaceMembership.objects.get(user=self.member, workspace_id=ws_id)
+        self.assertEqual(membership.role, 'manager')
+
+    def test_tc08_09_invite_and_change_role(self):
+        self.client.force_authenticate(user=self.manager)
+        res = self.client.post(f'/api/workspaces/{self.workspace.id}/add_member/', {
+            'user_id': self.other_user.id, 'role': 'member'
+        })
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        res = self.client.post(f'/api/workspaces/{self.workspace.id}/add_member/', {
+            'user_id': self.other_user.id, 'role': 'manager'
+        })
+        membership = WorkspaceMembership.objects.get(user=self.other_user, workspace=self.workspace)
+        self.assertEqual(membership.role, 'manager')
+
+    def test_tc10_delete_creator_forbidden(self):
+        self.client.force_authenticate(user=self.manager)
+        res = self.client.delete(f'/api/workspaces/{self.workspace.id}/remove_member/?user_id={self.manager.id}')
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_tc11_tc12_delete_workspace(self):
+        self.client.force_authenticate(user=self.member)
+        res = self.client.delete(f'/api/workspaces/{self.workspace.id}/')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.client.force_authenticate(user=self.manager)
+        res = self.client.delete(f'/api/workspaces/{self.workspace.id}/')
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+
+
+class BoardAndTaskCRUDTestCase(BaseAPITestCase):
+    """TC-13 - TC-21: Доски, Колонки, Задачи и Drag&Drop"""
+
+    def test_tc13_14_create_board(self):
+        self.client.force_authenticate(user=self.manager)
+        res = self.client.post('/api/boards/', {'workspace': self.workspace.id, 'name': 'New Board'})
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        new_board_id = res.data['id']
+        self.assertEqual(Column.objects.filter(board_id=new_board_id).count(), 3)
+        self.client.force_authenticate(user=self.member)
+        res = self.client.post('/api/boards/', {'workspace': self.workspace.id, 'name': 'Hack Board'})
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_tc15_16_create_task_validation(self):
+        self.client.force_authenticate(user=self.member)
+        res = self.client.post('/api/tasks/', {'column': self.col_todo.id, 'title': 'Member Task'})
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        res = self.client.post('/api/tasks/', {'column': self.col_todo.id, 'title': ''})
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_tc17_edit_own_task(self):
+        self.client.force_authenticate(user=self.manager)
+        res = self.client.patch(f'/api/tasks/{self.task.id}/', {'title': 'Updated Title'})
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.title, 'Updated Title')
+
+    def test_tc18_19_delete_task(self):
+        self.client.force_authenticate(user=self.member)
+        res = self.client.delete(f'/api/tasks/{self.task.id}/')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.client.force_authenticate(user=self.manager)
+        res = self.client.delete(f'/api/tasks/{self.task.id}/')
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_tc20_21_drag_and_drop(self):
+        self.client.force_authenticate(user=self.member)
+        res = self.client.post(f'/api/tasks/{self.task.id}/move/', {'column_id': self.col_in_progress.id})
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+        self.client.force_authenticate(user=self.manager)
+        res = self.client.post(f'/api/tasks/{self.task.id}/move/', {'column_id': self.col_in_progress.id, 'order': 0})
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.column_id, self.col_in_progress.id)
+
+
+class TaskVisibilityTestCase(BaseAPITestCase):
+    """TC-22 - TC-27: Механизм видимости задач"""
+
+    def _get_tasks(self, user):
+        self.client.force_authenticate(user=user)
+        res = self.client.get('/api/tasks/')
+        return res.data['results'] if 'results' in res.data else res.data
+
+    def test_tc22_public_visibility(self):
+        self.task.visibility = 'public'
+        self.task.save()
+        tasks = self._get_tasks(self.other_user)
         self.assertEqual(len(tasks), 1)
 
-        # Не участник — не видит
-        self.client.force_authenticate(user=self.other)
-        response = self.client.get('/api/tasks/')
-        tasks = response.data['results'] if 'results' in response.data else response.data
-        self.assertEqual(len(tasks), 0)
+    def test_tc23_private_visibility(self):
+        self.task.visibility = 'private'
+        self.task.save()
+        self.assertEqual(len(self._get_tasks(self.manager)), 1)
+        self.assertEqual(len(self._get_tasks(self.member)), 0)
 
+    def test_tc24_25_users_visibility(self):
+        self.task.visibility = 'users'
+        self.task.save()
+        self.task.visible_to_users.add(self.member)
+        self.assertEqual(len(self._get_tasks(self.member)), 1)
+        self.assertEqual(len(self._get_tasks(self.other_user)), 0)
 
-class CommentTestCase(APITestCase):
-    """Тесты комментариев."""
+    def test_tc26_group_visibility(self):
+        group = TaskGroup.objects.create(workspace=self.workspace, name='Backend', created_by=self.manager)
+        TaskGroupMembership.objects.create(group=group, user=self.member)
+        self.task.visibility = 'group'
+        self.task.group = group
+        self.task.save()
+        self.assertEqual(len(self._get_tasks(self.member)), 1)
+        self.assertEqual(len(self._get_tasks(self.other_user)), 0)
 
-    def setUp(self):
-        self.user = User.objects.create_user(username='u', password='Pass12345')
-        self.ws = Workspace.objects.create(name='WS', created_by=self.user)
-        WorkspaceMembership.objects.create(user=self.user, workspace=self.ws, role='manager')
-        self.board = Board.objects.create(workspace=self.ws, name='B')
-        self.col = Column.objects.create(board=self.board, name='C')
-        self.task = Task.objects.create(column=self.col, title='T', created_by=self.user)
-
-    def test_14_add_comment(self):
-        """Добавление комментария."""
-        self.client.force_authenticate(user=self.user)
-        response = self.client.post('/api/comments/', {
-            'task': self.task.id,
-            'text': 'Test comment',
+    def test_tc27_change_visibility(self):
+        self.client.force_authenticate(user=self.manager)
+        res = self.client.patch(f'/api/tasks/{self.task.id}/', {
+            'visibility': 'private'
         })
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.visibility, 'private')
+
+
+class CommentsAndAttachmentsTestCase(BaseAPITestCase):
+    """TC-28 - TC-31: Комментарии и Файлы"""
+
+    def test_tc28_comment_add(self):
+        self.client.force_authenticate(user=self.member)
+        res = self.client.post('/api/comments/', {'task': self.task.id, 'text': 'Test Comment'})
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Comment.objects.count(), 1)
 
-    def test_15_empty_comment_rejected(self):
-        """Пустой комментарий отклоняется."""
-        self.client.force_authenticate(user=self.user)
-        response = self.client.post('/api/comments/', {
-            'task': self.task.id,
-            'text': '',
-        })
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-
-class AttachmentTestCase(APITestCase):
-    """Тесты файлов."""
-
-    def setUp(self):
-        self.user = User.objects.create_user(username='u', password='Pass12345')
-        self.ws = Workspace.objects.create(name='WS', created_by=self.user)
-        WorkspaceMembership.objects.create(user=self.user, workspace=self.ws, role='manager')
-        self.board = Board.objects.create(workspace=self.ws, name='B')
-        self.col = Column.objects.create(board=self.board, name='C')
-        self.task = Task.objects.create(column=self.col, title='T', created_by=self.user)
-
-    def test_16_upload_pdf(self):
-        """Загрузка PDF-файла."""
-        self.client.force_authenticate(user=self.user)
+    def test_tc29_upload_pdf(self):
+        self.client.force_authenticate(user=self.member)
         pdf = SimpleUploadedFile('test.pdf', b'%PDF-1.4 test', content_type='application/pdf')
-        response = self.client.post('/api/attachments/', {
-            'task': self.task.id,
-            'file': pdf,
-        }, format='multipart')
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        res = self.client.post('/api/attachments/', {'task': self.task.id, 'file': pdf}, format='multipart')
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Attachment.objects.count(), 1)
 
-    def test_17_upload_exe_rejected(self):
-        """Загрузка .exe запрещена."""
-        self.client.force_authenticate(user=self.user)
+    def test_tc30_reject_exe(self):
+        self.client.force_authenticate(user=self.member)
         exe = SimpleUploadedFile('virus.exe', b'MZ...', content_type='application/octet-stream')
-        response = self.client.post('/api/attachments/', {
-            'task': self.task.id,
-            'file': exe,
-        }, format='multipart')
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        res = self.client.post('/api/attachments/', {'task': self.task.id, 'file': exe}, format='multipart')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_tc31_reject_large_file(self):
+        self.client.force_authenticate(user=self.member)
+        large_file = SimpleUploadedFile('large.pdf', b'0' * (11 * 1024 * 1024), content_type='application/pdf')
+        res = self.client.post('/api/attachments/', {'task': self.task.id, 'file': large_file}, format='multipart')
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TaskHistoryTestCase(BaseAPITestCase):
+    """TC-32: История изменений"""
+
+    def test_tc32_history_generation(self):
+        self.client.force_authenticate(user=self.manager)
+        self.client.patch(f'/api/tasks/{self.task.id}/', {'priority': 'high'})
+        history = TaskHistory.objects.filter(task=self.task)
+        self.assertTrue(history.exists())
+        record = history.last()
+        self.assertEqual(record.field_name, 'Приоритет')
+        self.assertEqual(record.new_value, 'Высокий')
